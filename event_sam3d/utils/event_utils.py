@@ -7,9 +7,10 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from events_3dgs.config import RELATED_DIR
-from events_3dgs.utils.common_utils import cast_to_torch
-from events_3dgs.utils.kpt_utils import get_queries, load_kpt_det_and_match
+from event_sam3d.config import RELATED_DIR
+
+from .common_utils import cast_to_torch
+from .kpt_utils import get_queries, load_kpt_det_and_match
 
 
 def get_events_from_samples(sample_events):
@@ -276,3 +277,60 @@ class VoxelGrid:
                             )
 
         return voxel_grid
+
+
+def event2event_image(events, num_img, H, W, device="cuda"):
+    zero_img = torch.zeros(num_img - 1, H, W, device=device)
+    t, x, y, p = events["t"], events["x"], events["y"], events["p"]
+    t = torch.from_numpy(t)
+    x = torch.from_numpy(x).to(device).long()
+    y = torch.from_numpy(y).to(device).long()
+    p = torch.from_numpy(p).to(device).float()
+
+    num_events = t.shape[0]
+    indices = torch.arange(num_events, device=device)
+    split_indices = torch.tensor_split(indices, num_img - 1)
+    chunk_labels = torch.cat(
+        [
+            torch.full((len(sub_indices),), i)
+            for i, sub_indices in enumerate(split_indices)
+        ]
+    )
+    chunk_labels = chunk_labels.long()
+
+    zero_img.index_put_((chunk_labels, y, x), p, accumulate=True)
+    tstamp_index = [0] + [inx[-1].item() for inx in split_indices]
+    tstamp = t[tstamp_index]
+    norm_tstamp = (tstamp - tstamp[0]) / (tstamp[-1] - tstamp[0])
+
+    return zero_img, norm_tstamp.to(torch.float32).to(device)
+
+
+# rgb is [3, H, W]
+def EDI_rgb(blurry_image, events, H, W, threshold=0.3):
+    assert blurry_image.shape[0] == 3, blurry_image.shape
+    device = blurry_image.device
+    bin_num = events.shape[0]
+    blurry_image = blurry_image.permute(1, 2, 0) * 255.0
+    event_sum = torch.zeros(H, W, device=device)
+    EDI = torch.ones(H, W, device=device)
+    for i in range(bin_num):
+        event_sum = event_sum + events[i]
+        EDI = EDI + torch.exp(threshold * event_sum)
+    EDI = torch.stack([EDI, EDI, EDI], axis=-1)
+    img = (bin_num + 1) * blurry_image / EDI
+    img = img.permute(2, 0, 1) / 255.0
+
+    return img
+
+
+def deblur_with_edi(original_image, events):
+    hw = original_image.shape[-2:]
+    event_image, norm_ts = event2event_image(events, num_img=8, H=hw[0], W=hw[1])
+    gt_image = EDI_rgb(
+        original_image,
+        event_image,
+        hw[0],
+        hw[1],
+    )
+    return gt_image.clip(0, 1)
