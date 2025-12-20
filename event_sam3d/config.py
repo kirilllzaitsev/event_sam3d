@@ -1,0 +1,38 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+IS_CLUSTER = os.path.exists("/cluster")
+IS_LOCAL = not IS_CLUSTER
+PROJ_DIR = Path(__file__).resolve().parents[1]
+WORKSPACE_DIR = PROJ_DIR if IS_CLUSTER else PROJ_DIR.parent
+
+DATA_DIR = (
+    Path(os.environ["DATA_DIR"]) if "DATA_DIR" in os.environ else WORKSPACE_DIR / "data"
+)
+EDATA_DIR = DATA_DIR / "eventsam"
+REPLICA_DIR = DATA_DIR / "event_dataset/Replica_final"
+DEVD_DIR = DATA_DIR / "event_dataset/DEVD" / "DAVIS_DEPTH_SLAM"
+RGBE_DIR = EDATA_DIR / "RGBE-SEG"
+MVSEC_DIR = EDATA_DIR / "mvsec/hdf5"
+RELATED_DIR = WORKSPACE_DIR / "related_work"
+
+REPLICA_SCENES = [
+    "office0",
+    "office1",
+    "office3",
+    "office4",
+    "room0",
+    "room1",
+    "room2",
+]
+
+DEVD_SCENES = [
+    "mahjong1",
+    "mountain1",
+    "table1",
+    "testbed1",
+]
