@@ -1,5 +1,6 @@
 import os
 
+import cv2
 import h5py
 import numpy as np
 from torch.utils.data import Dataset
@@ -41,38 +42,28 @@ class MVSEC(Dataset):
         self.original_height = 260
         self.original_width = 346
 
-        self.frame_file_list = []
         self.dataset = h5py.File(os.path.join(self.root, f"{self.seq_name}.hdf5"), "r")
-        self.extract_data()
+        self.num_frames = self.dataset["davis/left"]["image_raw"].shape[0]
+        self.num_events = self.dataset["davis/left"]["events"].shape[0]
 
     def __len__(self):
-        return len(self.frame_file_list)
-
-    def extract_data(self):
-        num_frames = self.dataset["davis/left"]["image_raw"].shape[0]
-        num_events = self.dataset["davis/left"]["events"].shape[0]
-
-        gray_ts = np.array(
-            self.dataset["davis"]["left"]["image_raw_ts"], dtype=np.float64
-        )
-        for i_file, img_ts in enumerate(gray_ts):
-            closest_event_id = self.dataset["davis/left"]["image_raw_event_inds"][
-                int(i_file)
-            ]
-            start_event_id = max(closest_event_id - self.nr_events_window // 2, 0)
-            if closest_event_id + self.nr_events_window // 2 >= num_events:
-                start_event_id = num_frames - self.nr_events_window
-            frame_list = [int(i_file), start_event_id]
-            self.frame_file_list.append(frame_list)
+        return self.num_frames
 
     def __getitem__(self, idx):
-        frame_id, start_event_id = self.frame_file_list[idx]
+        closest_event_id = self.dataset["davis/left"]["image_raw_event_inds"][idx]
+        start_event_id = max(closest_event_id - self.nr_events_window // 2, 0)
+        if closest_event_id + self.nr_events_window // 2 >= self.num_events:
+            start_event_id = self.num_frames - self.nr_events_window
 
         events = self.dataset["davis/left"]["events"][
             start_event_id : (start_event_id + self.nr_events_window)
         ][()]
+        gray = self.dataset["davis/left"]["image_raw"][idx]
+        rgb = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
         return {
+            "rgb": rgb,
             "events": events,
-            "frame_id": frame_id,
+            "closest_event_id": closest_event_id,
             "start_event_id": start_event_id,
+        }
         }
