@@ -13,12 +13,13 @@ WORKSPACE_DIR = PROJ_DIR if IS_CLUSTER else PROJ_DIR.parent
 DATA_DIR = (
     Path(os.environ["DATA_DIR"]) if "DATA_DIR" in os.environ else WORKSPACE_DIR / "data"
 )
-EDATA_DIR = DATA_DIR / "eventsam"
+EDATA_DIR = DATA_DIR
 REPLICA_DIR = DATA_DIR / "event_dataset/Replica_final"
 DEVD_DIR = DATA_DIR / "event_dataset/DEVD" / "DAVIS_DEPTH_SLAM"
-RGBE_DIR = EDATA_DIR / "RGBE-SEG"
+RGBE_DIR = EDATA_DIR / "eventsam/RGBE-SEG"
 MVSEC_DIR = EDATA_DIR / "mvsec/hdf5"
 RELATED_DIR = WORKSPACE_DIR / "related_work"
+SAM3_DIR = RELATED_DIR / "segm/sam3"
 
 REPLICA_SCENES = [
     "office0",
@@ -28,6 +29,14 @@ REPLICA_SCENES = [
     "room0",
     "room1",
     "room2",
+]
+MVSEC_SCENES=[
+    "indoor_flying1_data",
+    "indoor_flying2_data",
+    "indoor_flying3_data",
+    "indoor_flying4_data",
+    "outdoor_day1_data",
+    "outdoor_day2_data",
 ]
 
 DEVD_SCENES = [
