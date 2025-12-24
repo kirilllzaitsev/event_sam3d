@@ -1,0 +1,212 @@
+import os
+import sys
+from collections import defaultdict
+
+import matplotlib.pyplot as plt
+import torch
+import torch.distributed as dist
+import torch.nn.functional as F
+from torch import is_tensor
+
+from event_sam3d.config import IS_CLUSTER, RELATED_DIR
+from event_sam3d.img2event.model_utils import get_condition_embedder
+from event_sam3d.utils.common_utils import cast_to_numpy
+from event_sam3d.utils.misc_utils import is_empty
+
+
+def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
+    # embeds=scales x layers
+    losses = defaultdict(lambda: defaultdict(list))
+    total_loss = 0.0
+    for lname in s_embeds.keys():
+        if "_attn" in lname:
+            continue
+        for scale in range(len(s_embeds[lname])):
+            s_lout = s_embeds[lname][scale]
+            t_lout = t_embeds[lname][scale]
+            s_feat = s_lout if is_tensor(s_lout) else s_lout["output"]
+            t_feat = t_lout if is_tensor(t_lout) else t_lout["output"]
+            if use_attn:
+                if isinstance(t_lout, dict):
+                    attn = t_lout["cross_attn"].flatten(-2)
+                else:
+                    attn = t_embeds[f"{lname}_attn"][scale]
+                s_feat = s_feat * attn.squeeze().unsqueeze(-1)
+                t_feat = t_feat * attn.squeeze().unsqueeze(-1)
+            # print(f"{lname}_scale{scale}: s_feat={s_feat.shape}, t_feat={t_feat.shape}")
+            loss = F.l1_loss(s_feat, t_feat)
+            losses[scale][lname].append(loss.item())
+            total_loss += loss
+    return {"total_loss": total_loss, "losses": losses}
+
+
+def load_st_models(args, device="cpu", rank=0, exp_name=""):
+    cur_plt_backend = plt.get_backend()
+    sys.path.append(f"{RELATED_DIR}/rec/sam-3d-objects/notebook")
+
+    from inference import Inference
+
+    tag = "hf"
+    config_path = f"checkpoints/{tag}/pipeline_encoder.yaml"
+    t_model = Inference(config_path, compile=False, device=device)._pipeline
+    s_model = Inference(config_path, compile=False, device=device)._pipeline
+
+    for pset in [t_model.parameters(), s_model.parameters()]:
+        for p in pset:
+            p.requires_grad = False
+
+    if "weights-mlp" in exp_name:
+        condition_embedder = get_condition_embedder(s_model)
+        for n, p in condition_embedder.named_parameters():
+            if "patch_embed" in n or (
+                any(f"blocks.{i}." in n for i in [2, 5, 8, 11, 14, 17, 20, 23])
+                and any(x in n for x in [".mlp"])
+            ):
+                p.requires_grad = True
+    else:
+        for n, p in s_model.named_parameters():
+            pass
+    for n, p in s_model.named_parameters():
+        if any(n.startswith(x) for x in ["backbone.patch_embed"]):
+            p.requires_grad = True
+    if rank == 0:
+        print(
+            f"s_model.parameters={sum(p.numel() for p in s_model.parameters() if p.requires_grad)}"
+        )
+        print(
+            f"t_model.parameters={sum(p.numel() for p in t_model.parameters() if p.requires_grad)}"
+        )
+
+    # revert plt backend
+    plt.switch_backend(cur_plt_backend)
+
+    return s_model, t_model
+
+
+def init_distributed():
+    """
+    Initializes torch.distributed using environment variables set by torchrun.
+    Returns (rank, world_size, local_rank).
+    """
+    world_size = int(os.environ.get("WORLD_SIZE", os.environ.get("SLURM_NTASKS", 1)))
+    rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", 0)))
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+
+    if world_size > 1:
+        torch.cuda.set_device(local_rank)
+        dist.init_process_group(
+            backend="nccl",
+            init_method="env://",
+            world_size=world_size,
+            rank=rank,
+            device_id=local_rank,
+        )
+        dist.barrier()
+
+    return rank, world_size, local_rank
+
+
+def is_main_process(rank):
+    return rank == 0
+
+
+def cleanup_distributed():
+    if dist.is_available() and dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def reduce_tensor(tensor, world_size, op=dist.ReduceOp.SUM):
+    """
+    Reduce a single scalar tensor over all processes and return the average.
+    """
+    if world_size < 2:
+        return tensor
+    with torch.no_grad():
+        dist.all_reduce(tensor, op=op)
+        tensor /= world_size
+    return tensor
+
+
+def reduce_dict(input_dict, average=True, device=None):
+    """
+    Args:
+        input_dict (dict): all the values will be reduced
+        average (bool): whether to do average or sum
+    Reduce the values in the dictionary from all processes so that all processes
+    have the averaged results. Returns a dict with the same fields as
+    input_dict, after reduction.
+    """
+    world_size = get_world_size()
+    if world_size < 2 or is_empty(input_dict):
+        return input_dict
+    with torch.no_grad():
+        names = []
+        values = []
+        # sort the keys so that they are consistent across processes
+        for k in sorted(input_dict.keys()):
+            names.append(k)
+            v = input_dict[k]
+            if not is_tensor(v):
+                v = torch.tensor(v, device=device)
+            values.append(v)
+        values = torch.stack(values, dim=0)
+        if values.device != torch.device("cpu"):
+            dist.all_reduce(values)
+        if average:
+            values /= world_size
+        reduced_dict = {k: v for k, v in zip(names, values)}
+    return reduced_dict
+
+
+def get_world_size():
+    if not is_dist_avail_and_initialized():
+        return 1
+    return dist.get_world_size()
+
+
+def is_dist_avail_and_initialized():
+    if not dist.is_available():
+        return False
+    if not dist.is_initialized():
+        return False
+    return True
+
+
+class EarlyStopping:
+    def __init__(self, patience=5, delta=0, verbose=False):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved.
+                            Default: 5
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+                            Default: 0
+            verbose (bool): If True, prints a message for each validation loss improvement.
+                            Default: False
+        """
+        self.patience = patience
+        self.delta = delta
+        self.verbose = verbose
+        self.counter = 0
+        self.best = None
+        self.do_stop = False
+
+    def __call__(self, metric=None, loss=None):
+
+        assert (
+            metric is not None or loss is not None
+        ), "Either metric or loss should be provided"
+        current = metric if metric is not None else -loss
+
+        if self.best is None:
+            self.best = current
+        elif current < self.best + self.delta:
+            self.counter += 1
+            if self.verbose:
+                print(
+                    f"EarlyStopping: {current=:0.4f} and {self.best=:0.4f}. Patience: {self.counter}/{self.patience}"
+                )
+            if self.counter >= self.patience:
+                self.do_stop = True
+        else:
+            self.best = current
+            self.counter = 0
