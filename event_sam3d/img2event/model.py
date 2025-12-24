@@ -38,18 +38,9 @@ class TeacherStudent(nn.Module):
         self.t_embeds = defaultdict(list)
 
         def set_hooks(net, embeds):
-            condition_embedder = [
-                x
-                for x in net._pipeline.condition_embedders[
-                    "ss_condition_embedder"
-                ].embedder_list
-                if all("event" in xx[0] for xx in x[1])
-            ]
-            assert (
-                len(condition_embedder) == 1 and len(condition_embedder[0]) == 2
-            ), len(condition_embedder)
-            # same encoder for full/cropped imgs
-            condition_embedder = condition_embedder[0][0]
+            from event_sam3d.img2event.model_utils import get_condition_embedder
+
+            condition_embedder = get_condition_embedder(net)
             hooks = []
 
             for i in self.block_idxs:
