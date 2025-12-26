@@ -22,6 +22,8 @@ class TeacherStudent(nn.Module):
         use_attn_hook=False,
     ):
         # s/t are Inference pipelines from sam3d
+        from event_sam3d.img2event.model_utils import get_condition_embedder
+
         super().__init__()
         self.s = s
         self.t = t
@@ -30,17 +32,22 @@ class TeacherStudent(nn.Module):
         self.use_attn_hook = use_attn_hook
 
         if block_idxs is None:
-            block_idxs = range(len(fetch_module_by_name(self.t, t_blocks_name)))
+            block_idxs = range(
+                len(
+                    fetch_module_by_name(
+                        get_condition_embedder(self.t, use_event=False), t_blocks_name
+                    )
+                )
+            )
         self.block_idxs = block_idxs
 
         # set hooks for all outputs
         self.s_embeds = defaultdict(list)
         self.t_embeds = defaultdict(list)
 
-        def set_hooks(net, embeds):
-            from event_sam3d.img2event.model_utils import get_condition_embedder
+        def set_hooks(net, embeds, use_event):
 
-            condition_embedder = get_condition_embedder(net)
+            condition_embedder = get_condition_embedder(net, use_event=use_event)
             hooks = []
 
             for i in self.block_idxs:
@@ -56,8 +63,8 @@ class TeacherStudent(nn.Module):
                 hooks.append(hook)
             return hooks
 
-        self.s_hooks = set_hooks(self.s, self.s_embeds)
-        self.t_hooks = set_hooks(self.t, self.t_embeds)
+        self.s_hooks = set_hooks(self.s, self.s_embeds, use_event=True)
+        self.t_hooks = set_hooks(self.t, self.t_embeds, use_event=False)
 
     def forward(self, s_kwargs, t_kwargs=None, **kwargs):
         self.s_embeds.clear()
