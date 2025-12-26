@@ -18,8 +18,7 @@ class IEDataset(torch.utils.data.Dataset):
         assert all((d.height, d.width) == self.hw for d in datasets.values()), [
             (k, d.height, d.width) for k, d in datasets.items()
         ]
-        if use_vg_event_repr:
-            self.vg = VoxelGrid(3, self.hw[0], self.hw[1])
+        self.vg = VoxelGrid(3, self.hw[0], self.hw[1])
 
     def __len__(self):
         return sum(self.dataset_lengths)
@@ -35,7 +34,7 @@ class IEDataset(torch.utils.data.Dataset):
         dataset_key = list(self.datasets.keys())[dataset_idx]
         sample = self.datasets[dataset_key][sample_idx]
 
-        if self.use_vg_event_repr:
+        if isinstance(sample["events"], dict):
             event_repr = self.vg.convert(event_dict=sample["events"])
             sample["events"] = event_repr
 

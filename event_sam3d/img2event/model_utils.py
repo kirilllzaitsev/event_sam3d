@@ -32,11 +32,11 @@ def load_esam3d(ckpt_name, device="cuda", ckpt_type="best"):
     }
 
 
-def get_condition_embedder(pipe):
+def get_condition_embedder(pipe, use_event=True):
     condition_embedder = [
         x
         for x in pipe.condition_embedders["ss_condition_embedder"].embedder_list
-        if all("event" in xx[0] for xx in x[1])
+        if all(("event" if use_event else "image") in xx[0] for xx in x[1])
     ]
     assert len(condition_embedder) == 1 and len(condition_embedder[0]) == 2, len(
         condition_embedder

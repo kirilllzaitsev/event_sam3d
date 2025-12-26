@@ -9,7 +9,6 @@ import torch.nn.functional as F
 from torch import is_tensor
 
 from event_sam3d.config import IS_CLUSTER, RELATED_DIR
-from event_sam3d.img2event.model_utils import get_condition_embedder
 from event_sam3d.utils.common_utils import cast_to_numpy
 from event_sam3d.utils.misc_utils import is_empty
 
@@ -45,9 +44,10 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
     sys.path.append(f"{RELATED_DIR}/rec/sam-3d-objects/notebook")
 
     from inference import Inference
+    from event_sam3d.img2event.model_utils import get_condition_embedder
 
     tag = "hf"
-    config_path = f"checkpoints/{tag}/pipeline_encoder.yaml"
+    config_path = f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}/pipeline_encoder.yaml"
     t_model = Inference(config_path, compile=False, device=device)._pipeline
     s_model = Inference(config_path, compile=False, device=device)._pipeline
 
