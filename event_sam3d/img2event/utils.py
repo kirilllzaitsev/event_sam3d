@@ -49,11 +49,29 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
     tag = "hf"
     config_path = f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}/pipeline_encoder.yaml"
     t_model = Inference(config_path, compile=False, device=device)._pipeline
-    s_model = Inference(config_path, compile=False, device=device)._pipeline
+    s_model = Inference(config_path, compile=False, use_event=True, device=device, rgbe_fusion_type=args.rgbe_fusion_type)._pipeline
 
     for pset in [t_model.parameters(), s_model.parameters()]:
         for p in pset:
             p.requires_grad = False
+
+    for p in [t_model, s_model]:
+        p.condition_embedders.ss_condition_embedder.embedder_list = [
+        x
+        for i, x in enumerate(
+            p.condition_embedders.ss_condition_embedder.embedder_list
+        )
+        if i in [0, 3]
+        ]
+        p.condition_embedders.ss_condition_embedder.module_list = torch.nn.ModuleList(
+            [
+                x
+                for i, x in enumerate(
+                    p.condition_embedders.ss_condition_embedder.module_list
+                )
+                if i in [0, 3]
+            ]
+        )
 
     if "weights-mlp" in exp_name:
         condition_embedder = get_condition_embedder(s_model)
