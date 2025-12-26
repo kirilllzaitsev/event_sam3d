@@ -20,6 +20,7 @@ RGBE_DIR = EDATA_DIR / "eventsam/RGBE-SEG"
 MVSEC_DIR = EDATA_DIR / "mvsec/hdf5"
 RELATED_DIR = WORKSPACE_DIR / "related_work"
 SAM3_DIR = RELATED_DIR / "segm/sam3"
+SAM3D_DIR = RELATED_DIR / "rec/sam-3d-objects"
 
 REPLICA_SCENES = [
     "office0",

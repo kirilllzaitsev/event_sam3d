@@ -72,6 +72,13 @@ def build_model(cfg, rank=0, device="cuda"):
     s_model, t_model = load_st_models(
         cfg, rank=rank, exp_name=cfg.exp_name, device=device
     )
+    forward_args = None
+    ts_model = TeacherStudent(
+        s=s_model,
+        t=t_model,
+    )
+    return {"model": ts_model, "forward_args": forward_args}
+
 
 def build_datasets(cfg):
     """
