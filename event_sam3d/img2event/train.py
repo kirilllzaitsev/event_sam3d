@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.distributed as dist
+from event_sam3d.img2event.model_utils import get_condition_embedder
 import wandb
 import yaml
 from torch.nn import functional as F
@@ -15,7 +16,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, Subset
 from tqdm import tqdm
 
-from event_sam3d.config import IS_CLUSTER, PROJ_DIR, RELATED_DIR, REPLICA_SCENES
+from event_sam3d.config import (
+    IS_CLUSTER,
+    MVSEC_SCENES,
+    PROJ_DIR,
+    RELATED_DIR,
+    REPLICA_SCENES,
+)
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
 from event_sam3d.img2event.model import TeacherStudent
@@ -58,32 +65,23 @@ def make_vis_loaders(train_dataset, val_dataset, cfg):
     return train_vis_loader, val_vis_loader
 
 
-def build_model(cfg, rank=0):
+def build_model(cfg, rank=0, device="cuda"):
     """
     Return a regular (non-DDP) model.
     """
-    args = argparse.Namespace(
-        **yaml.load(
-            open(f"{RELATED_DIR}/flow/unimatch/config_flow.yaml"),
-            Loader=yaml.UnsafeLoader,
-        )
+    s_model, t_model = load_st_models(
+        cfg, rank=rank, exp_name=cfg.exp_name, device=device
     )
-    s_model, t_model = load_st_models(args, rank=rank, exp_name=cfg.exp_name)
-    forward_args = None
-    ts_model = TeacherStudent(s=s_model, t=t_model)
-    return {"model": ts_model, "forward_args": forward_args}
-
 
 def build_datasets(cfg):
     """
     Return train_dataset, val_dataset.
     """
     datasets = {}
-    for filename in REPLICA_SCENES:
-        gr = MVSECDataset(
-            seq_name="indoor_flying1_data", obj_name="barrel", use_masks=True
+    for filename in MVSEC_SCENES:
+        dataset = MVSECDataset(
+            seq_name=filename, obj_name="barrel", use_masks=True, use_vg_event_repr=True
         )
-        dataset, config = gr["dataset"], gr["config"]
         datasets[filename] = dataset
     ds_cls = IEDataset
     val_ds_names = cfg.val_ds_names
@@ -122,31 +120,9 @@ class Trainer:
 
     def ts_forward(
         self,
-        sample1,
+        batch,
         forward_kwargs=None,
     ):
-        event_repr1, sharp_rgb1 = (sample1["events"], sample1["sharp_rgb"])
-
-        image1 = sharp_rgb1
-
-        if event_repr1.ndim == 3:
-            device = next(self.model.parameters()).device
-            image1 = image1.unsqueeze(0).to(device)
-
-            event_repr1 = event_repr1.unsqueeze(0).to(device)
-
-        event_repr1 = event_repr1 / 255
-
-        do_normalize_event_repr = True
-        do_normalize_event_repr = False
-
-        if do_normalize_event_repr:
-            event_repr1 = (
-                (event_repr1 - event_repr1.min())
-                / (event_repr1.max() - event_repr1.min())
-                * 255
-            )
-            # event_repr1 = (event_repr1 - event_repr1.mean()) / event_repr1.std()
 
         s_kwargs = dict(
             image=batch["rgb"],
