@@ -149,13 +149,13 @@ class Trainer:
             # event_repr1 = (event_repr1 - event_repr1.mean()) / event_repr1.std()
 
         s_kwargs = dict(
-            image=sample1["rgb"],
-            mask=sample1["mask"],
+            image=batch["rgb"],
+            mask=batch["mask"],
             seed=42,
-            event_image=sample1["events"],
+            event_image=batch["events"],
         )
         t_kwargs = dict(
-            image=sample1["rgb"], mask=sample1["mask"], seed=42, event_image=None
+            image=batch["rgb"], mask=batch["mask"], seed=42, event_image=None
         )
         results_dict = self.model(s_kwargs=s_kwargs, t_kwargs=t_kwargs)
         results_dict["meta"] = {}
@@ -192,14 +192,10 @@ class Trainer:
                 train_loader.sampler.set_epoch(epoch)
 
             optimizer.zero_grad(set_to_none=True)
-            for k in ["events"]:
-                for i in range(len(batch)):
-                    batch[i][k] = batch[i][k].to(device, non_blocking=True)
 
             with torch.amp.autocast("cuda", enabled=cfg.use_amp):
-                sample1 = batch[0]
                 outputs = self.ts_forward(
-                    sample1=sample1,
+                    batch=batch,
                     forward_kwargs=forward_args,
                 )
                 losses = self.calc_losses(outputs)
@@ -270,14 +266,9 @@ class Trainer:
         for batch in tqdm(
             val_loader, disable=not is_main_process(rank), desc="Val", leave=True
         ):
-            for k in ["events"]:
-                for i in range(len(batch)):
-                    batch[i][k] = batch[i][k].to(device, non_blocking=True)
-
             with torch.amp.autocast("cuda", enabled=cfg.use_amp):
-                sample1 = batch[0]
                 outputs = self.ts_forward(
-                    sample1=sample1,
+                    batch=batch,
                     forward_kwargs=forward_args,
                 )
                 losses = self.calc_losses(outputs)
@@ -301,27 +292,18 @@ class Trainer:
         return avg_running_losses
 
     @torch.no_grad()
-    def inference_step(self, sample1, cfg, forward_args, device="cuda"):
-        # sample = dict with sharp_rgb + events keys
-        raise NotImplementedError
+    def inference_step(self, batch, cfg, forward_args, device="cuda"):
         self.model.eval()
-        for s in [sample1]:
-            for k in ["events"]:
-                s[k] = s[k].to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda", enabled=cfg.use_amp):
             outputs = self.ts_forward(
-                sample1=sample1,
+                batch=batch,
                 forward_kwargs=forward_args,
             )
             losses = self.calc_losses(outputs)
-        inference_size, ori_size = (
-            outputs["meta"]["inference_size"],
-            outputs["meta"]["ori_size"],
-        )
         return {
-            "s_pred": outputs["s_pred"]["flows"],
-            "t_pred": outputs["t_pred"]["flows"],
+            "s_pred": outputs["s_pred"],
+            "t_pred": outputs["t_pred"],
             "losses": losses,
         }
 
@@ -339,14 +321,10 @@ class Trainer:
 
         res = {}
         for alias, batch in zip(["train", "val"], [train_batch, val_batch]):
-            for k in ["events"]:
-                for i in range(len(batch)):
-                    batch[i][k] = batch[i][k].to(device, non_blocking=True)
 
             with torch.amp.autocast("cuda", enabled=cfg.use_amp):
-                sample1 = batch[0]
                 outputs = self.ts_forward(
-                    sample1=sample1,
+                    batch=batch,
                     forward_kwargs=forward_args,
                 )
                 losses = self.calc_losses(outputs)
