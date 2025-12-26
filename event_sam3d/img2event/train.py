@@ -490,13 +490,9 @@ def main(cfg):
                 if is_best:
                     best_val_loss = val_loss
 
+                model_noddp = model.module if isinstance(model, DDP) else model
                 ckpt = {
                     "epoch": epoch,
-                    "model": (
-                        model.module.state_dict()
-                        if isinstance(model, DDP)
-                        else model.state_dict()
-                    ),
                     "optimizer": optimizer.state_dict(),
                     "scheduler": (
                         scheduler.state_dict() if scheduler is not None else None
@@ -506,11 +502,14 @@ def main(cfg):
                     "cfg": vars(cfg),
                 }
 
-                latest_path = ckpt_dir / "latest.pt"
-                best_path = ckpt_dir / "best.pt"
-
-                torch.save(ckpt, latest_path)
                 if is_best:
+                    best_path = ckpt_dir / "best.pt"
+                    ss_generator_cond_embedder_ckpt = {"state_dict": get_condition_embedder(model_noddp).state_dict()}
+                    rgbe_fuser_ckpt = {"state_dict": model_noddp.condition_embedders["ss_condition_embedder"].rgbe_fuser.state_dict()}
+                    best_ss_generator_cond_embedder_path = ckpt_dir / "best_ss_generator_cond_embedder.pt"
+                    best_rgbe_fuser_path = ckpt_dir / "best_rgbe_fuser.pt"
+                    torch.save(ss_generator_cond_embedder_ckpt, best_ss_generator_cond_embedder_path)
+                    torch.save(rgbe_fuser_ckpt, best_rgbe_fuser_path)
                     torch.save(ckpt, best_path)
 
         if world_size > 1:
@@ -541,6 +540,9 @@ def parse_args():
     train_args.add_argument("--grad_clip", type=float, default=1.0)
     train_args.add_argument("--es_patience_epochs", type=int, default=20)
     train_args.add_argument("--es_delta", type=float, default=0.0)
+
+    model_args = p.add_argument_group("model")
+    model_args.add_argument("--rgbe_fusion_type", default="gated")
 
     data_args = p.add_argument_group("data")
     data_args.add_argument("--val_ds_names", nargs="+", default=["indoor_flying2_data"])
