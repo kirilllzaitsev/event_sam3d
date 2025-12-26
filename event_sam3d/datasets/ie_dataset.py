@@ -5,7 +5,7 @@ from event_sam3d.utils.event_utils import VoxelGrid
 
 
 class IEDataset(torch.utils.data.Dataset):
-    def __init__(self, datasets, use_vg_event_repr=True):
+    def __init__(self, datasets):
 
         self.datasets = datasets
 
@@ -13,7 +13,6 @@ class IEDataset(torch.utils.data.Dataset):
         self.cum_lengths = np.cumsum(self.dataset_lengths)
 
         first_ds = list(datasets.values())[0]
-        self.use_vg_event_repr = use_vg_event_repr and not first_ds.use_vg_event_repr
         self.hw = (first_ds.height, first_ds.width)
         assert all((d.height, d.width) == self.hw for d in datasets.values()), [
             (k, d.height, d.width) for k, d in datasets.items()
@@ -37,5 +36,6 @@ class IEDataset(torch.utils.data.Dataset):
         if isinstance(sample["events"], dict):
             event_repr = self.vg.convert(event_dict=sample["events"])
             sample["events"] = event_repr
+        sample["mask"] = (sample["mask"] * 255).astype(np.uint8)
 
         return sample
