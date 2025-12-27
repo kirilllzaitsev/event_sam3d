@@ -33,31 +33,24 @@ class MVSECDataset(Dataset):
         self.seq_name = seq_name
         self.root = root
         self.event_representation = event_representation
-        self.nr_events_window = nr_events_window
         self.nr_temporal_bins = nr_temporal_bins
         self.mode = mode
         self.augmentation = augmentation
         self.obj_name = obj_name
+        self.height = height
+        self.width = width
 
         self.use_masks = use_masks
         self.use_vg_event_repr = use_vg_event_repr
 
-        if mode == "train":
-            self.use_labels = False
-        elif mode == "val":
-            self.use_labels = True
-        elif mode == "test":
-            self.use_labels = True
-
-        self.height = height
-        self.width = width
+        self.nr_events_window = int(nr_events_window)
         self.hw = (height, width)
-        self.original_height = 260
-        self.original_width = 346
 
-        self.dataset = h5py.File(os.path.join(self.root, f"{self.seq_name}.hdf5"), "r")
+        self.hdf5_path = os.path.join(self.root, f"{self.seq_name}.hdf5")
+        self.dataset = h5py.File(self.hdf5_path, "r")
         self.num_frames = self.dataset["davis/left"]["image_raw"].shape[0]
         self.num_events = self.dataset["davis/left"]["events"].shape[0]
+        self.frame_ts = np.asarray(self.dataset["davis/left/image_raw_ts"])
         self.frame_ids = list(range(self.num_frames))
 
         if use_masks:
@@ -109,5 +102,6 @@ class MVSECDataset(Dataset):
                     "p": events[:, 3],
                 }
             )
+            # sample["events_raw"] = events
             sample["events"] = event_repr
         return sample
