@@ -20,7 +20,7 @@ class MVSECDataset(Dataset):
         root=MVSEC_DIR,
         height=260,
         width=346,
-        nr_events_window=30_000,
+        event_window_ms=50,
         augmentation=False,
         mode="train",
         event_representation=None,
@@ -43,8 +43,8 @@ class MVSECDataset(Dataset):
         self.use_masks = use_masks
         self.use_vg_event_repr = use_vg_event_repr
 
-        self.nr_events_window = int(nr_events_window)
         self.hw = (height, width)
+        self.half_event_window_us = event_window_ms * 1e3
 
         self.hdf5_path = os.path.join(self.root, f"{self.seq_name}.hdf5")
         self.dataset = h5py.File(self.hdf5_path, "r")
@@ -52,6 +52,7 @@ class MVSECDataset(Dataset):
         self.num_events = self.dataset["davis/left"]["events"].shape[0]
         self.frame_ts = np.asarray(self.dataset["davis/left/image_raw_ts"])
         self.frame_ids = list(range(self.num_frames))
+        self.event_ts = (self.dataset["davis/left/events"][:, 2] * 1e6).astype("int64")
 
         if use_masks:
             paths = get_ordered_paths(
@@ -72,13 +73,23 @@ class MVSECDataset(Dataset):
     def __getitem__(self, idx):
         frame_id = self.frame_ids[idx]
         closest_event_id = self.dataset["davis/left"]["image_raw_event_inds"][frame_id]
-        start_event_id = max(closest_event_id - self.nr_events_window // 2, 0)
-        if closest_event_id + self.nr_events_window // 2 >= self.num_events:
-            start_event_id = self.num_frames - self.nr_events_window
+        closest_event_ts = self.event_ts[closest_event_id]
+        if closest_event_ts - self.half_event_window_us > 0:
+            start_event_id = np.searchsorted(
+                self.event_ts, closest_event_ts - self.half_event_window_us, side="left"
+            )
+        else:
+            start_event_id = 0
+        if closest_event_ts + self.half_event_window_us < self.event_ts[-1]:
+            end_event_id = np.searchsorted(
+                self.event_ts,
+                closest_event_ts + self.half_event_window_us,
+                side="right",
+            )
+        else:
+            end_event_id = self.num_events
+        events = self.dataset["davis/left"]["events"][start_event_id:end_event_id]
 
-        events = self.dataset["davis/left"]["events"][
-            start_event_id : (start_event_id + self.nr_events_window)
-        ][()]
         gray = self.dataset["davis/left"]["image_raw"][frame_id]
         rgb = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
         sample = {
@@ -86,6 +97,7 @@ class MVSECDataset(Dataset):
             "events": events,
             "closest_event_id": closest_event_id,
             "start_event_id": start_event_id,
+            "end_event_id": end_event_id,
         }
         if self.use_masks:
             sam3_res = torch.load(
@@ -102,6 +114,6 @@ class MVSECDataset(Dataset):
                     "p": events[:, 3],
                 }
             )
-            # sample["events_raw"] = events
+            sample["events_raw"] = events
             sample["events"] = event_repr
         return sample
