@@ -73,9 +73,11 @@ def build_model(cfg, rank=0, device="cuda"):
         cfg, rank=rank, exp_name=cfg.exp_name, device=device
     )
     forward_args = None
+    block_idxs = [2] if cfg.do_debug else [2, 5, 8, 11, 14, 17, 20, 23]
     ts_model = TeacherStudent(
         s=s_model,
         t=t_model,
+        block_idxs=block_idxs,
     )
     return {"model": ts_model, "forward_args": forward_args}
 

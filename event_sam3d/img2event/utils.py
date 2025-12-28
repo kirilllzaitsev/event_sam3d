@@ -44,12 +44,24 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
     sys.path.append(f"{RELATED_DIR}/rec/sam-3d-objects/notebook")
 
     from inference import Inference
+
     from event_sam3d.img2event.model_utils import get_condition_embedder
 
     tag = "hf"
-    config_path = f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}/pipeline_encoder.yaml"
-    t_model = Inference(config_path, compile=False, device=device)._pipeline
-    s_model = Inference(config_path, compile=False, use_event=True, device=device, rgbe_fusion_type=args.rgbe_fusion_type)._pipeline
+    config_path = (
+        f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}/pipeline_encoder.yaml"
+    )
+    t_model = Inference(
+        config_path, compile=False, device=device, use_ckpt=not args.do_debug
+    )._pipeline
+    s_model = Inference(
+        config_path,
+        compile=False,
+        use_event=True,
+        device=device,
+        use_ckpt=not args.do_debug,
+        rgbe_fusion_type=args.rgbe_fusion_type,
+    )._pipeline
 
     for pset in [t_model.parameters(), s_model.parameters()]:
         for p in pset:
@@ -57,11 +69,11 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
 
     for p in [t_model, s_model]:
         p.condition_embedders.ss_condition_embedder.embedder_list = [
-        x
-        for i, x in enumerate(
-            p.condition_embedders.ss_condition_embedder.embedder_list
-        )
-        if i in [0, 3]
+            x
+            for i, x in enumerate(
+                p.condition_embedders.ss_condition_embedder.embedder_list
+            )
+            if i in [0, 3]
         ]
         p.condition_embedders.ss_condition_embedder.module_list = torch.nn.ModuleList(
             [
@@ -73,17 +85,14 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
             ]
         )
 
-    if "weights-mlp" in exp_name:
-        condition_embedder = get_condition_embedder(s_model)
-        for n, p in condition_embedder.named_parameters():
-            if "patch_embed" in n or (
-                any(f"blocks.{i}." in n for i in [2, 5, 8, 11, 14, 17, 20, 23])
-                and any(x in n for x in [".mlp"])
-            ):
-                p.requires_grad = True
-    else:
-        for n, p in s_model.named_parameters():
-            pass
+    condition_embedder = get_condition_embedder(s_model)
+    block_idxs = [2] if args.do_debug else [2, 5, 8, 11, 14, 17, 20, 23]
+    for n, p in condition_embedder.named_parameters():
+        if "patch_embed" in n or (
+            any(f"blocks.{i}." in n for i in block_idxs)
+            and any(x in n for x in [".mlp"])
+        ):
+            p.requires_grad = True
     for n, p in s_model.named_parameters():
         if any(n.startswith(x) for x in ["backbone.patch_embed"]):
             p.requires_grad = True
