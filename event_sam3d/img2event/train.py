@@ -82,20 +82,32 @@ def build_datasets(cfg):
     """
     train_ds_names = MVSEC_SCENES
     val_ds_names = cfg.val_ds_names
+    obj_names = cfg.obj_names
     if cfg.do_overfit:
         train_ds_names = train_ds_names[:1]
         val_ds_names = train_ds_names[:1]
+        obj_names = obj_names[:1]
     datasets = {}
-    for filename in train_ds_names:
-        dataset = MVSECDataset(
-            seq_name=filename, obj_name="barrel", use_masks=True, use_vg_event_repr=True
-        )
-        datasets[filename] = dataset
+    for filename in train_ds_names + val_ds_names:
+        for obj_name in obj_names:
+            dataset = MVSECDataset(
+                seq_name=filename,
+                obj_name=obj_name,
+                use_masks=True,
+                use_vg_event_repr=True,
+            )
+            datasets[f"{filename}_{obj_name}"] = dataset
     ds_cls = IEDataset
     train_ds = ds_cls(
-        datasets={k: v for k, v in datasets.items() if k not in val_ds_names}
+        datasets={
+            k: v for k, v in datasets.items() if cfg.do_overfit or not any(n in k for n in val_ds_names)
+        }
     )
-    val_ds = ds_cls(datasets={n: datasets[n] for n in val_ds_names})
+    val_ds = ds_cls(
+        datasets={
+            k: v for k, v in datasets.items() if any(n in k for n in val_ds_names)
+        }
+    )
     if cfg.do_debug:
         train_ds = torch.utils.data.Subset(train_ds, range(cfg.batch_size * 2))
         val_ds = torch.utils.data.Subset(val_ds, range(cfg.batch_size * 2))
@@ -561,7 +573,7 @@ def save_ckpt(ckpt_dir, model_noddp, state=None):
         torch.save(state, state_path)
 
 
-def parse_args():
+def get_arg_parser():
     p = argparse.ArgumentParser()
     train_args = p.add_argument_group("training")
     train_args.add_argument("--epochs", type=int, default=50)
