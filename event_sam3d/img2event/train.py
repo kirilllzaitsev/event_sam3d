@@ -582,6 +582,8 @@ def parse_args():
 
     data_args = p.add_argument_group("data")
     data_args.add_argument("--val_ds_names", nargs="+", default=["indoor_flying2_data"])
+    data_args.add_argument("--event_window_ms", type=int, default=50)
+    data_args.add_argument("--obj_names", nargs="+", default=["barrel"])
 
     pipe_args = p.add_argument_group("pipeline")
     pipe_args.add_argument("--log_step_freq", type=int, default=20)
@@ -594,16 +596,25 @@ def parse_args():
     pipe_args.add_argument("--do_debug", action="store_true")
     pipe_args.add_argument("--do_overfit", action="store_true")
 
-    return p.parse_args()
+    return p
 
 
 if __name__ == "__main__":
     sys.path.append(f"{RELATED_DIR}/slam/egsslam")
-    cfg = parse_args()
+    p = get_arg_parser()
+    cfg = p.parse_args()
     if cfg.use_amp:
         cfg.exp_name += "_amp"
+    if cfg.do_overfit:
+        cfg.exp_name += "_overfit"
+    if cfg.do_debug:
+        cfg.exp_name += "_debug"
+    if cfg.event_window_ms != p.get_default("event_window_ms"):
+        cfg.exp_name += f"_windowms-{cfg.event_window_ms}"
     cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    exp_name = cfg.exp_name + ("_" if cfg.exp_name else "") + current_datetime
+    exp_name = cfg.exp_name + f"_{current_datetime}"
+    if exp_name.startswith("_"):
+        exp_name = exp_name[1:]
     cfg.exp_name = exp_name.replace("__", "_")
     main(cfg)
