@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.distributed as dist
-from event_sam3d.img2event.model_utils import get_condition_embedder
 import wandb
 import yaml
 from torch.nn import functional as F
@@ -26,6 +25,7 @@ from event_sam3d.config import (
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
 from event_sam3d.img2event.model import TeacherStudent
+from event_sam3d.img2event.model_utils import get_condition_embedder
 from event_sam3d.img2event.utils import (
     EarlyStopping,
     cleanup_distributed,
@@ -86,14 +86,18 @@ def build_datasets(cfg):
     """
     Return train_dataset, val_dataset.
     """
+    train_ds_names = MVSEC_SCENES
+    val_ds_names = cfg.val_ds_names
+    if cfg.do_overfit:
+        train_ds_names = train_ds_names[:1]
+        val_ds_names = train_ds_names[:1]
     datasets = {}
-    for filename in MVSEC_SCENES:
+    for filename in train_ds_names:
         dataset = MVSECDataset(
             seq_name=filename, obj_name="barrel", use_masks=True, use_vg_event_repr=True
         )
         datasets[filename] = dataset
     ds_cls = IEDataset
-    val_ds_names = cfg.val_ds_names
     train_ds = ds_cls(
         datasets={k: v for k, v in datasets.items() if k not in val_ds_names}
     )
@@ -469,7 +473,7 @@ def main(cfg):
             scheduler.step()
 
         desc = f"{epoch=}. Train Loss: {train_loss:.4f}"
-        if epoch % cfg.val_epoch_freq == 0 or (epoch == cfg.epochs - 1):
+        if not cfg.do_overfit and (epoch % cfg.val_epoch_freq == 0 or (epoch == cfg.epochs - 1)):
             val_losses = trainer.validate(
                 val_loader=val_loader,
                 cfg=cfg,
@@ -513,11 +517,22 @@ def main(cfg):
 
                 if is_best:
                     best_path = ckpt_dir / "best.pt"
-                    ss_generator_cond_embedder_ckpt = {"state_dict": get_condition_embedder(model_noddp).state_dict()}
-                    rgbe_fuser_ckpt = {"state_dict": model_noddp.condition_embedders["ss_condition_embedder"].rgbe_fuser.state_dict()}
-                    best_ss_generator_cond_embedder_path = ckpt_dir / "best_ss_generator_cond_embedder.pt"
+                    ss_generator_cond_embedder_ckpt = {
+                        "state_dict": get_condition_embedder(model_noddp.s).state_dict()
+                    }
+                    rgbe_fuser_ckpt = {
+                        "state_dict": model_noddp.s.condition_embedders[
+                            "ss_condition_embedder"
+                        ].rgbe_fuser.state_dict()
+                    }
+                    best_ss_generator_cond_embedder_path = (
+                        ckpt_dir / "best_ss_generator_cond_embedder.pt"
+                    )
                     best_rgbe_fuser_path = ckpt_dir / "best_rgbe_fuser.pt"
-                    torch.save(ss_generator_cond_embedder_ckpt, best_ss_generator_cond_embedder_path)
+                    torch.save(
+                        ss_generator_cond_embedder_ckpt,
+                        best_ss_generator_cond_embedder_path,
+                    )
                     torch.save(rgbe_fuser_ckpt, best_rgbe_fuser_path)
                     torch.save(ckpt, best_path)
 
@@ -565,6 +580,7 @@ def parse_args():
     pipe_args.add_argument("--use_wandb", action="store_true")
     pipe_args.add_argument("--do_save_ckpt", action="store_true")
     pipe_args.add_argument("--do_debug", action="store_true")
+    pipe_args.add_argument("--do_overfit", action="store_true")
 
     return p.parse_args()
 
