@@ -61,12 +61,15 @@ class MVSECDataset(Dataset):
             paths = get_ordered_paths(
                 f"{self.root}/{self.seq_name}/sam3/{obj_name}*.pt"
             )
-            self.frame_ids = sorted(
-                [
-                    int(re.search("\d+", x).group())
-                    for x in (set([x.split("_")[-1] for x in paths]))
-                ]
-            )
+            target_frame_ids = {
+                int(re.search("\d+", x).group())
+                for x in (set([x.split("_")[-1] for x in paths]))
+            }
+            matched_frame_idxs = [
+                i for i, fid in enumerate(self.frame_ids) if fid in target_frame_ids
+            ]
+            self.frame_ids = [self.frame_ids[i] for i in matched_frame_idxs]
+            self.frame_ts = self.frame_ts[matched_frame_idxs]
             self.num_frames = len(self.frame_ids)
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
