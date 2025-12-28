@@ -1,7 +1,8 @@
 import numpy as np
 import torch
 
-from event_sam3d.utils.event_utils import VoxelGrid
+from event_sam3d.utils.common_utils import cast_to_torch
+from event_sam3d.utils.events_representations import Tencode
 from event_sam3d.utils.misc_utils import print_cls
 
 
@@ -18,19 +19,17 @@ class IEDataset(torch.utils.data.Dataset):
         assert all((d.height, d.width) == self.hw for d in datasets.values()), [
             (k, d.height, d.width) for k, d in datasets.items()
         ]
-        self.vg = VoxelGrid(3, self.hw[0], self.hw[1])
+        self.vg = Tencode(height=self.hw[0], width=self.hw[1])
 
     def __len__(self):
         return sum(self.dataset_lengths)
 
     def __repr__(self):
         return print_cls(
-            self,
-            excluded_attrs=["datasets"],
+            self, excluded_attrs=["datasets"], extra_str=f"{self.datasets.keys()=}"
         )
 
     def __getitem__(self, idx):
-        # Find which dataset the index belongs to
         dataset_idx = np.searchsorted(self.cum_lengths, idx, side="right")
         if dataset_idx == 0:
             sample_idx = idx
@@ -41,7 +40,12 @@ class IEDataset(torch.utils.data.Dataset):
         sample = self.datasets[dataset_key][sample_idx]
 
         if isinstance(sample["events"], dict):
-            event_repr = self.vg.convert(event_dict=sample["events"])
+            event_repr = self.vg.convert(
+                x=cast_to_torch(sample["events"][:, 0]),
+                y=cast_to_torch(sample["events"][:, 1]),
+                t=cast_to_torch(sample["events"][:, 2]),
+                p=cast_to_torch(sample["events"][:, 3]),
+            )
             sample["events"] = event_repr
         sample["mask"] = (sample["mask"] * 255).astype(np.uint8)
 
