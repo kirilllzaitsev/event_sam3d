@@ -8,9 +8,10 @@ import torch
 from torch.utils.data import Dataset
 
 from event_sam3d.config import MVSEC_DIR
-from event_sam3d.utils.common_utils import cast_to_numpy
+from event_sam3d.utils.common_utils import cast_to_numpy, cast_to_torch
 from event_sam3d.utils.event_utils import VoxelGrid
-from event_sam3d.utils.misc_utils import get_ordered_paths
+from event_sam3d.utils.events_representations import Tencode
+from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
 
 
 class MVSECDataset(Dataset):
@@ -65,7 +66,7 @@ class MVSECDataset(Dataset):
                 ]
             )
         if use_vg_event_repr:
-            self.vg = VoxelGrid(3, self.hw[0], self.hw[1])
+            self.vg = Tencode(height=self.hw[0], width=self.hw[1])
 
     def __len__(self):
         return len(self.frame_ids)
@@ -101,19 +102,19 @@ class MVSECDataset(Dataset):
         }
         if self.use_masks:
             sam3_res = torch.load(
-                f"{self.root}/{self.seq_name}/sam3/{self.obj_name}_{frame_id:06d}.pt"
+                f"{self.root}/{self.seq_name}/sam3/{self.obj_name}_{frame_id:06d}.pt",
+                map_location="cpu",
             )
             masks = cast_to_numpy(sam3_res["masks"].squeeze(1))
             sample["mask"] = masks[0]
         if self.use_vg_event_repr:
             event_repr = self.vg.convert(
-                event_dict={
-                    "x": events[:, 0],
-                    "y": events[:, 1],
-                    "t": events[:, 2],
-                    "p": events[:, 3],
-                }
+                x=cast_to_torch(events[:, 0]),
+                y=cast_to_torch(events[:, 1]),
+                t=cast_to_torch(events[:, 2]),
+                p=cast_to_torch(events[:, 3]),
             )
-            sample["events_raw"] = events
+            event_repr = self.vg.to_rgb_mono(event_repr)
+            # sample["events_raw"] = events
             sample["events"] = event_repr
         return sample
