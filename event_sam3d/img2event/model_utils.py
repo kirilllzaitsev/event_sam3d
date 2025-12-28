@@ -4,10 +4,10 @@ import torch
 import yaml
 
 from event_sam3d.config import PROJ_DIR
-from event_sam3d.img2event.train import Trainer, build_model
 
 
 def load_esam3d(ckpt_name, device="cuda", ckpt_type="best"):
+    from event_sam3d.img2event.train import Trainer, build_model
     # best/latest
     ckpt_dir = f"{PROJ_DIR}/checkpoints/{ckpt_name}"
     cfg = argparse.Namespace(

@@ -2,8 +2,10 @@ import argparse
 import gc
 import glob
 import os
+import random
 import re
 
+import numpy as np
 import torch
 import yaml
 
@@ -22,10 +24,10 @@ def print_cls(cls, exclude_private=True, excluded_attrs=None, extra_str=None):
         if k in excluded_attrs:
             continue
         msg += f"{k}: {v}\n"
+    if extra_str:
+        msg += f"Extras:\n{extra_str}"
     if len(excluded_attrs) > 0:
         msg += f"\nAlso contains: {excluded_attrs}"
-    if extra_str:
-        msg += f"\n{extra_str}"
     msg += "\n" + "-" * 30
     return msg
 
@@ -78,3 +80,12 @@ def get_ordered_paths(pattern, sort_fn=None, exts=None):
 
 def load_args(path):
     return argparse.Namespace(**yaml.load(open(path), Loader=yaml.UnsafeLoader))
+
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
