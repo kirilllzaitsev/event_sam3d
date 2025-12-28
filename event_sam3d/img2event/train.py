@@ -15,13 +15,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, Subset
 from tqdm import tqdm
 
-from event_sam3d.config import (
-    IS_CLUSTER,
-    MVSEC_SCENES,
-    PROJ_DIR,
-    RELATED_DIR,
-    REPLICA_SCENES,
-)
+from event_sam3d.config import IS_CLUSTER, MVSEC_SCENES, PROJ_DIR, RELATED_DIR
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
 from event_sam3d.img2event.model import TeacherStudent
@@ -36,8 +30,8 @@ from event_sam3d.img2event.utils import (
     reduce_dict,
     reduce_tensor,
 )
-from event_sam3d.utils.common_utils import adjust_depth_for_plt
-from event_sam3d.utils.misc_utils import print_args
+from event_sam3d.utils.common_utils import adjust_depth_for_plt, adjust_img_for_plt
+from event_sam3d.utils.misc_utils import print_args, set_seed
 
 
 def make_vis_loaders(train_dataset, val_dataset, cfg):
@@ -331,6 +325,7 @@ class Trainer:
 
 
 def main(cfg):
+    set_seed(seed=42)
     rank, world_size, local_rank = init_distributed()
     device = torch.device("cuda", local_rank)
 
@@ -417,6 +412,15 @@ def main(cfg):
 
     vis_loaders = make_vis_loaders(train_dataset, val_dataset, cfg)
 
+    if is_main_process(rank):
+        print(f"# CLI command:\npython {' '.join(sys.argv)}")
+        print(f"# Experiment created at {wandb.run.get_url()}")
+        print(f"# {ckpt_dir=}")
+        print(f"# TRAIN DS:\n{train_dataset}")
+        print(f"# VAL DS:\n{val_dataset}")
+        if "SLURM_JOB_ID" in os.environ:
+            print(f"# SLURM_JOB_ID: {os.environ['SLURM_JOB_ID']}")
+
     # Model & optimizer
     build_model_res = build_model(cfg, rank=rank)
     model, forward_args = (
@@ -442,7 +446,6 @@ def main(cfg):
         start_epoch = ckpt["epoch"] + 1
         best_val_loss = ckpt.get("best_val_loss", best_val_loss)
 
-    # Wrap with DDP
     if world_size > 1:
         model = DDP(
             model,
@@ -451,7 +454,6 @@ def main(cfg):
             find_unused_parameters=False,
         )
 
-    # Training loop
     trainer = Trainer(model, cfg)
     early_stopping = EarlyStopping(
         patience=max(1, cfg.es_patience_epochs // cfg.val_epoch_freq),
@@ -529,7 +531,7 @@ def main(cfg):
 
     if cfg.do_overfit and cfg.do_save_ckpt:
         save_ckpt(ckpt_dir=ckpt_dir, model_noddp=model_noddp)
-    
+
     if is_main_process(rank):
         wandb.finish()
 
