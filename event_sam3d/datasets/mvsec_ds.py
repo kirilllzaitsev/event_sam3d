@@ -51,7 +51,9 @@ class MVSECDataset(Dataset):
         self.dataset = h5py.File(self.hdf5_path, "r")
         self.num_frames = self.dataset["davis/left"]["image_raw"].shape[0]
         self.num_events = self.dataset["davis/left"]["events"].shape[0]
-        self.frame_ts = np.asarray(self.dataset["davis/left/image_raw_ts"])
+        self.frame_ts = (
+            np.asarray(self.dataset["davis/left/image_raw_ts"]) * 1e6
+        ).astype("int64")
         self.frame_ids = list(range(self.num_frames))
         self.event_ts = (self.dataset["davis/left/events"][:, 2] * 1e6).astype("int64")
 
@@ -65,11 +67,19 @@ class MVSECDataset(Dataset):
                     for x in (set([x.split("_")[-1] for x in paths]))
                 ]
             )
+            self.num_frames = len(self.frame_ids)
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
 
     def __len__(self):
         return len(self.frame_ids)
+
+    def __repr__(self):
+        return print_cls(
+            self,
+            excluded_attrs=["dataset", "frame_ids"],
+            extra_str=f"{len(self.frame_ids)=} {self.frame_ids[:5]=} {self.frame_ids[-5:]=}",
+        )
 
     def __getitem__(self, idx):
         frame_id = self.frame_ids[idx]

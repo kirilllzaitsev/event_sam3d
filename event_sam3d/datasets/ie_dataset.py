@@ -2,6 +2,7 @@ import numpy as np
 import torch
 
 from event_sam3d.utils.event_utils import VoxelGrid
+from event_sam3d.utils.misc_utils import print_cls
 
 
 class IEDataset(torch.utils.data.Dataset):
@@ -12,8 +13,8 @@ class IEDataset(torch.utils.data.Dataset):
         self.dataset_lengths = [len(v) for k, v in datasets.items()]
         self.cum_lengths = np.cumsum(self.dataset_lengths)
 
-        first_ds = list(datasets.values())[0]
-        self.hw = (first_ds.height, first_ds.width)
+        self.first_ds = list(datasets.values())[0]
+        self.hw = (self.first_ds.height, self.first_ds.width)
         assert all((d.height, d.width) == self.hw for d in datasets.values()), [
             (k, d.height, d.width) for k, d in datasets.items()
         ]
@@ -21,6 +22,12 @@ class IEDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return sum(self.dataset_lengths)
+
+    def __repr__(self):
+        return print_cls(
+            self,
+            excluded_attrs=["datasets"],
+        )
 
     def __getitem__(self, idx):
         # Find which dataset the index belongs to
