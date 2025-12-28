@@ -204,7 +204,7 @@ class VoxelGrid:
     ):
 
         if event_dict is not None:
-            time = event_dict["t"].astype("float32")
+            time = event_dict["t"]
             x = event_dict["x"].astype("int16")
             y = event_dict["y"].astype("int16")
             pol = event_dict["p"].astype("int8")
@@ -241,7 +241,7 @@ class VoxelGrid:
             if is_int_xy:
                 for tlim in [t0, t0 + 1]:
                     mask = (tlim >= 0) & (tlim < ch)
-                    interp_weights = value * (1 - (tlim - t_norm).abs())
+                    interp_weights = value * (1 - (tlim - t_norm).abs()).float()
 
                     index = ht * wd * tlim.long() + wd * y.long() + x.long()
 
