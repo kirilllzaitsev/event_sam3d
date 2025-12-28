@@ -45,7 +45,7 @@ class MVSECDataset(Dataset):
         self.use_vg_event_repr = use_vg_event_repr
 
         self.hw = (height, width)
-        self.half_event_window_us = event_window_ms * 1e3
+        self.half_event_window_us = (event_window_ms // 2) * 1e3
 
         self.hdf5_path = os.path.join(self.root, f"{self.seq_name}.hdf5")
         self.dataset = h5py.File(self.hdf5_path, "r")
@@ -119,7 +119,8 @@ class MVSECDataset(Dataset):
                 map_location="cpu",
             )
             masks = cast_to_numpy(sam3_res["masks"].squeeze(1))
-            sample["mask"] = masks[0]
+            largest_mask_idx = np.argmax([(np.sum(m)) for m in masks])
+            sample["mask"] = masks[largest_mask_idx]
         if self.use_vg_event_repr:
             event_repr = self.vg.convert(
                 x=cast_to_torch(events[:, 0]),
