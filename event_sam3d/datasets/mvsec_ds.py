@@ -88,20 +88,14 @@ class MVSECDataset(Dataset):
         frame_id = self.frame_ids[idx]
         closest_event_id = self.dataset["davis/left"]["image_raw_event_inds"][frame_id]
         closest_event_ts = self.event_ts[closest_event_id]
-        if closest_event_ts - self.half_event_window_us > 0:
-            start_event_id = np.searchsorted(
-                self.event_ts, closest_event_ts - self.half_event_window_us, side="left"
-            )
-        else:
-            start_event_id = 0
-        if closest_event_ts + self.half_event_window_us < self.event_ts[-1]:
-            end_event_id = np.searchsorted(
-                self.event_ts,
-                closest_event_ts + self.half_event_window_us,
-                side="right",
-            )
-        else:
-            end_event_id = self.num_events
+        start_event_id = np.searchsorted(
+            self.event_ts, closest_event_ts - self.half_event_window_us, side="left"
+        )
+        end_event_id = np.searchsorted(
+            self.event_ts,
+            closest_event_ts + self.half_event_window_us,
+            side="right",
+        )
         events = self.dataset["davis/left"]["events"][start_event_id:end_event_id]
 
         gray = self.dataset["davis/left"]["image_raw"][frame_id]
