@@ -19,23 +19,29 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
     total_loss = 0.0
     for lname in s_embeds.keys():
         if "_attn" in lname:
-            continue
-        for scale in range(len(s_embeds[lname])):
-            s_lout = s_embeds[lname][scale]
-            t_lout = t_embeds[lname][scale]
-            s_feat = s_lout if is_tensor(s_lout) else s_lout["output"]
-            t_feat = t_lout if is_tensor(t_lout) else t_lout["output"]
-            if use_attn:
-                if isinstance(t_lout, dict):
-                    attn = t_lout["cross_attn"].flatten(-2)
-                else:
-                    attn = t_embeds[f"{lname}_attn"][scale]
-                s_feat = s_feat * attn.squeeze().unsqueeze(-1)
-                t_feat = t_feat * attn.squeeze().unsqueeze(-1)
-            # print(f"{lname}_scale{scale}: s_feat={s_feat.shape}, t_feat={t_feat.shape}")
+            pass
+        elif "rgbe_fuser" in lname:
+            s_feat = s_embeds[lname][0]
+            t_feat = t_embeds["t_final_rgb_tokens"][0]
             loss = F.l1_loss(s_feat, t_feat)
-            losses[scale][lname].append(loss.item())
+            losses[0][lname].append(loss.item())
             total_loss += loss
+        else:
+            for input_cond_idx in range(len(s_embeds[lname])):
+                s_lout = s_embeds[lname][input_cond_idx]
+                t_lout = t_embeds[lname][input_cond_idx]
+                s_feat = s_lout if is_tensor(s_lout) else s_lout["output"]
+                t_feat = t_lout if is_tensor(t_lout) else t_lout["output"]
+                if use_attn:
+                    if isinstance(t_lout, dict):
+                        attn = t_lout["cross_attn"].flatten(-2)
+                    else:
+                        attn = t_embeds[f"{lname}_attn"][input_cond_idx]
+                    s_feat = s_feat * attn.squeeze().unsqueeze(-1)
+                    t_feat = t_feat * attn.squeeze().unsqueeze(-1)
+                loss = F.l1_loss(s_feat, t_feat)
+                losses[input_cond_idx][lname].append(loss.item())
+                total_loss += loss
     return {"total_loss": total_loss, "losses": losses}
 
 
