@@ -85,18 +85,24 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
             ]
         )
 
-    condition_embedder = get_condition_embedder(s_model)
     block_idxs = [2] if args.do_debug else [2, 5, 8, 11, 14, 17, 20, 23]
-    for n, p in condition_embedder.named_parameters():
-        if "patch_embed" in n or (
-            any(f"blocks.{i}." in n for i in block_idxs)
-            and any(x in n for x in [".mlp"])
+    trainable_param_names = []
+    for n, p in s_model.named_parameters():
+        if (
+            "patch_embed" in n
+            or "rgbe_fuser" in n
+            or (
+                any(f"blocks.{i}." in n for i in block_idxs)
+                and any(x in n for x in [".mlp"])
+            )
         ):
             p.requires_grad = True
+            trainable_param_names.append(n)
     for n, p in s_model.named_parameters():
         if any(n.startswith(x) for x in ["backbone.patch_embed"]):
             p.requires_grad = True
     if rank == 0:
+        print(f"\n{trainable_param_names=}\n")
         print(
             f"s_model.parameters={sum(p.numel() for p in s_model.parameters() if p.requires_grad)}"
         )
