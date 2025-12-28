@@ -419,6 +419,7 @@ def main(cfg):
         build_model_res["model"].to(device),
         build_model_res["forward_args"],
     )
+    model_noddp = model.module if isinstance(model, DDP) else model
     optimizer, scheduler = build_optimizer(model, cfg, use_scheduler=cfg.use_scheduler)
     scaler = torch.amp.GradScaler("cuda", enabled=cfg.use_amp)
 
@@ -473,7 +474,9 @@ def main(cfg):
             scheduler.step()
 
         desc = f"{epoch=}. Train Loss: {train_loss:.4f}"
-        if not cfg.do_overfit and (epoch % cfg.val_epoch_freq == 0 or (epoch == cfg.epochs - 1)):
+        if not cfg.do_overfit and (
+            epoch % cfg.val_epoch_freq == 0 or (epoch == cfg.epochs - 1)
+        ):
             val_losses = trainer.validate(
                 val_loader=val_loader,
                 cfg=cfg,
@@ -503,38 +506,18 @@ def main(cfg):
                 if is_best:
                     best_val_loss = val_loss
 
-                model_noddp = model.module if isinstance(model, DDP) else model
-                ckpt = {
-                    "epoch": epoch,
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": (
-                        scheduler.state_dict() if scheduler is not None else None
-                    ),
-                    "scaler": scaler.state_dict(),
-                    "best_val_loss": best_val_loss,
-                    "cfg": vars(cfg),
-                }
-
                 if is_best:
-                    best_path = ckpt_dir / "best.pt"
-                    ss_generator_cond_embedder_ckpt = {
-                        "state_dict": get_condition_embedder(model_noddp.s).state_dict()
+                    ckpt = {
+                        "epoch": epoch,
+                        "optimizer": optimizer.state_dict(),
+                        "scheduler": (
+                            scheduler.state_dict() if scheduler is not None else None
+                        ),
+                        "scaler": scaler.state_dict(),
+                        "best_val_loss": best_val_loss,
                     }
-                    rgbe_fuser_ckpt = {
-                        "state_dict": model_noddp.s.condition_embedders[
-                            "ss_condition_embedder"
-                        ].rgbe_fuser.state_dict()
-                    }
-                    best_ss_generator_cond_embedder_path = (
-                        ckpt_dir / "best_ss_generator_cond_embedder.pt"
-                    )
-                    best_rgbe_fuser_path = ckpt_dir / "best_rgbe_fuser.pt"
-                    torch.save(
-                        ss_generator_cond_embedder_ckpt,
-                        best_ss_generator_cond_embedder_path,
-                    )
-                    torch.save(rgbe_fuser_ckpt, best_rgbe_fuser_path)
-                    torch.save(ckpt, best_path)
+
+                    save_ckpt(ckpt_dir, model_noddp, ckpt=ckpt)
 
         if world_size > 1:
             dist.barrier()
@@ -545,10 +528,36 @@ def main(cfg):
             print(f"WARN: Early stopping on epoch {epoch}")
             break
 
+    if cfg.do_overfit and cfg.do_save_ckpt:
+        save_ckpt(ckpt_dir=ckpt_dir, model_noddp=model_noddp)
+    
     if is_main_process(rank):
         wandb.finish()
 
     cleanup_distributed()
+
+
+def save_ckpt(ckpt_dir, model_noddp, ckpt=None):
+    ss_generator_cond_embedder_ckpt = {
+        "state_dict": get_condition_embedder(model_noddp.s).state_dict()
+    }
+    rgbe_fuser_ckpt = {
+        "state_dict": model_noddp.s.condition_embedders[
+            "ss_condition_embedder"
+        ].rgbe_fuser.state_dict()
+    }
+    best_ss_generator_cond_embedder_path = (
+        ckpt_dir / "best_ss_generator_cond_embedder.pt"
+    )
+    best_rgbe_fuser_path = ckpt_dir / "best_rgbe_fuser.pt"
+    torch.save(
+        ss_generator_cond_embedder_ckpt,
+        best_ss_generator_cond_embedder_path,
+    )
+    torch.save(rgbe_fuser_ckpt, best_rgbe_fuser_path)
+    if ckpt is not None:
+        best_path = ckpt_dir / "best.pt"
+        torch.save(ckpt, best_path)
 
 
 def parse_args():
