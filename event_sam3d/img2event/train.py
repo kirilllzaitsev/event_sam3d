@@ -342,7 +342,7 @@ def main(cfg):
 
     if is_main_process(rank):
         run = wandb.init(
-            project="img2event_flow",
+            project="img2event_sam3d",
             name=cfg.exp_name,
             config=cfg,
             mode=None if cfg.use_wandb else "disabled",
@@ -352,6 +352,10 @@ def main(cfg):
         wandb.define_metric("epoch")
         wandb.run.log_code(
             f"{PROJ_DIR}/event_sam3d/img2event",
+            include_fn=lambda path: path.endswith(".py"),
+        )
+        wandb.run.log_code(
+            f"{RELATED_DIR}/rec/sam-3d-objects/sam3d_objects/pipeline",
             include_fn=lambda path: path.endswith(".py"),
         )
         cli_args = " ".join(sys.argv[1:])
@@ -507,17 +511,12 @@ def main(cfg):
                     best_val_loss = val_loss
 
                 if is_best:
-                    ckpt = {
+                    state = {
                         "epoch": epoch,
-                        "optimizer": optimizer.state_dict(),
-                        "scheduler": (
-                            scheduler.state_dict() if scheduler is not None else None
-                        ),
-                        "scaler": scaler.state_dict(),
                         "best_val_loss": best_val_loss,
                     }
 
-                    save_ckpt(ckpt_dir, model_noddp, ckpt=ckpt)
+                    save_ckpt(ckpt_dir, model_noddp, state=state)
 
         if world_size > 1:
             dist.barrier()
@@ -537,7 +536,7 @@ def main(cfg):
     cleanup_distributed()
 
 
-def save_ckpt(ckpt_dir, model_noddp, ckpt=None):
+def save_ckpt(ckpt_dir, model_noddp, state=None):
     ss_generator_cond_embedder_ckpt = {
         "state_dict": get_condition_embedder(model_noddp.s).state_dict()
     }
@@ -555,9 +554,9 @@ def save_ckpt(ckpt_dir, model_noddp, ckpt=None):
         best_ss_generator_cond_embedder_path,
     )
     torch.save(rgbe_fuser_ckpt, best_rgbe_fuser_path)
-    if ckpt is not None:
-        best_path = ckpt_dir / "best.pt"
-        torch.save(ckpt, best_path)
+    if state is not None:
+        state_path = ckpt_dir / "state.pt"
+        torch.save(state, state_path)
 
 
 def parse_args():
