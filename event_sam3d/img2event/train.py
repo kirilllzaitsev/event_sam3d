@@ -564,17 +564,19 @@ def parse_args():
     train_args = p.add_argument_group("training")
     train_args.add_argument("--epochs", type=int, default=50)
     train_args.add_argument("--batch_size", type=int, default=4)
-    train_args.add_argument("--num_workers", type=int, default=8)
-    train_args.add_argument("--lr", type=float, default=3e-4)
-    train_args.add_argument("--weight_decay", type=float, default=1e-4)
+    train_args.add_argument("--num_workers", type=int, default=4)
+    train_args.add_argument("--lr", type=float, default=5e-5)
+    train_args.add_argument("--weight_decay", type=float, default=0.0)
     train_args.add_argument("--use_amp", action="store_true")
     train_args.add_argument("--use_scheduler", action="store_true")
     train_args.add_argument("--grad_clip", type=float, default=1.0)
-    train_args.add_argument("--es_patience_epochs", type=int, default=20)
+    train_args.add_argument("--es_patience_epochs", type=int, default=16)
     train_args.add_argument("--es_delta", type=float, default=0.0)
 
     model_args = p.add_argument_group("model")
-    model_args.add_argument("--rgbe_fusion_type", default="gated")
+    model_args.add_argument(
+        "--rgbe_fusion_type", default="gated", choices=["gated", "attn"]
+    )
 
     data_args = p.add_argument_group("data")
     data_args.add_argument("--val_ds_names", nargs="+", default=["indoor_flying2_data"])
@@ -598,6 +600,7 @@ if __name__ == "__main__":
     cfg = parse_args()
     if cfg.use_amp:
         cfg.exp_name += "_amp"
+    cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     exp_name = cfg.exp_name + ("_" if cfg.exp_name else "") + current_datetime
     cfg.exp_name = exp_name.replace("__", "_")
