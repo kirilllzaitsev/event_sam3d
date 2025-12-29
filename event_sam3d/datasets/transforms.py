@@ -17,7 +17,22 @@ def horizontal_flip(img):
         flipped = img[:, ::-1, :]
     else:
         flipped = img[:, ::-1]
-    return flipped
+    return flipped.copy()
+
+
+def gauss_blur(img, ksize=5):
+    return cv2.GaussianBlur(img, (ksize, ksize), 0)
+
+
+def motion_blur(img, ksize=5):
+    kernel = np.zeros((ksize, ksize))
+    kernel[int((ksize - 1) / 2), :] = (
+        np.ones(
+            ksize,
+        )
+        / ksize
+    )
+    return cv2.filter2D(img, -1, kernel)
 
 
 class Transform:
@@ -45,7 +60,11 @@ class Transform:
                 if np.sum(mask_crop) / np.sum(sample["mask"]) < 0.4:
                     return sample
                 sample["mask"] = mask_crop
-            for k in ["rgb", "events"]:
-                if k in sample:
-                    sample[k] = sample[k][y : y + n, x : x + n, :]
+        sample["rgb_clean"] = sample["rgb"].copy()
+        if "gblur" in self.names and np.random.rand() < self.probs["gblur"]:
+            ksize = np.random.randint(self.blur_ksize_min, self.blur_ksize_max + 1)
+            sample["rgb"] = gauss_blur(sample["rgb"], ksize=ksize)
+        if "mblur" in self.names and np.random.rand() < self.probs["mblur"]:
+            ksize = np.random.randint(self.blur_ksize_min, self.blur_ksize_max + 1)
+            sample["rgb"] = motion_blur(sample["rgb"], ksize=ksize)
         return sample
