@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 
 
@@ -37,9 +38,13 @@ def motion_blur(img, ksize=5):
 
 class Transform:
 
-    def __init__(self, names, probs=None, crop_size=224):
+    def __init__(
+        self, names, probs=None, crop_size=224, blur_ksize_min=5, blur_ksize_max=15
+    ):
         self.names = names
         self.crop_size = crop_size
+        self.blur_ksize_min = blur_ksize_min
+        self.blur_ksize_max = blur_ksize_max
         self.probs = {n: 0.5 for n in names} if probs is None else probs
 
     def __call__(self, sample):
@@ -55,11 +60,26 @@ class Transform:
             y = np.random.randint(0, h - n + 1)
             x = np.random.randint(0, w - n + 1)
             # ensure that sufficient number of obj pxs remains after crop
+            use_crop = True
             if "mask" in sample:
                 mask_crop = sample["mask"][y : y + n, x : x + n]
                 if np.sum(mask_crop) / np.sum(sample["mask"]) < 0.4:
-                    return sample
+                    use_crop = False
+            if use_crop:
+                mask_crop = cv2.resize(
+                    mask_crop.astype(np.float32),
+                    (w, h),
+                    interpolation=cv2.INTER_NEAREST,
+                ).astype(bool)
                 sample["mask"] = mask_crop
+                for k in ["rgb", "events"]:
+                    if k in sample:
+                        sample[k] = sample[k][y : y + n, x : x + n, :]
+                        sample[k] = cv2.resize(
+                            sample[k],
+                            (w, h),
+                            interpolation=cv2.INTER_LINEAR,
+                        )
         sample["rgb_clean"] = sample["rgb"].copy()
         if "gblur" in self.names and np.random.rand() < self.probs["gblur"]:
             ksize = np.random.randint(self.blur_ksize_min, self.blur_ksize_max + 1)
