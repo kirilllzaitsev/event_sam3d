@@ -87,27 +87,29 @@ def build_datasets(cfg):
         train_ds_names = train_ds_names[:1]
         val_ds_names = train_ds_names[:1]
         obj_names = obj_names[:1]
-    datasets = {}
-    for filename in train_ds_names + val_ds_names:
-        for obj_name in obj_names:
+    train_datasets = {}
+    val_datasets = {}
+    for obj_name in obj_names:
+        common_kwargs = dict(
+            obj_name=obj_name,
+            use_masks=True,
+            use_vg_event_repr=True,
+        )
+        for filename in train_ds_names:
             dataset = MVSECDataset(
                 seq_name=filename,
-                obj_name=obj_name,
-                use_masks=True,
-                use_vg_event_repr=True,
+                transform_names=cfg.transform_names,
+                **common_kwargs,
             )
-            datasets[f"{filename}_{obj_name}"] = dataset
-    ds_cls = IEDataset
-    train_ds = ds_cls(
-        datasets={
-            k: v for k, v in datasets.items() if cfg.do_overfit or not any(n in k for n in val_ds_names)
-        }
-    )
-    val_ds = ds_cls(
-        datasets={
-            k: v for k, v in datasets.items() if any(n in k for n in val_ds_names)
-        }
-    )
+            train_datasets[f"{filename}_{obj_name}"] = dataset
+        for filename in val_ds_names:
+            dataset = MVSECDataset(
+                seq_name=filename,
+                **common_kwargs,
+            )
+            val_datasets[f"{filename}_{obj_name}"] = dataset
+    train_ds = IEDataset(datasets=train_datasets)
+    val_ds = IEDataset(datasets=val_datasets)
     if cfg.do_debug:
         train_ds = torch.utils.data.Subset(train_ds, range(cfg.batch_size * 2))
         val_ds = torch.utils.data.Subset(val_ds, range(cfg.batch_size * 2))
@@ -596,6 +598,7 @@ def get_arg_parser():
     data_args.add_argument("--val_ds_names", nargs="+", default=["indoor_flying2_data"])
     data_args.add_argument("--event_window_ms", type=int, default=50)
     data_args.add_argument("--obj_names", nargs="+", default=["barrel"])
+    data_args.add_argument("--transform_names", nargs="*")
 
     pipe_args = p.add_argument_group("pipeline")
     pipe_args.add_argument("--log_step_freq", type=int, default=20)
