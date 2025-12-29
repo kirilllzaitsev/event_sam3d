@@ -8,6 +8,7 @@ import torch
 from torch.utils.data import Dataset
 
 from event_sam3d.config import MVSEC_DIR
+from event_sam3d.datasets.transforms import Transform
 from event_sam3d.utils.common_utils import cast_to_numpy, cast_to_torch
 from event_sam3d.utils.event_utils import VoxelGrid
 from event_sam3d.utils.events_representations import Tencode
@@ -22,7 +23,7 @@ class MVSECDataset(Dataset):
         height=260,
         width=346,
         event_window_ms=50,
-        augmentation=False,
+        transform_names=None,
         mode="train",
         event_representation=None,
         nr_temporal_bins=5,
@@ -36,7 +37,6 @@ class MVSECDataset(Dataset):
         self.event_representation = event_representation
         self.nr_temporal_bins = nr_temporal_bins
         self.mode = mode
-        self.augmentation = augmentation
         self.obj_name = obj_name
         self.height = height
         self.width = width
@@ -46,6 +46,12 @@ class MVSECDataset(Dataset):
 
         self.hw = (height, width)
         self.half_event_window_us = (event_window_ms // 2) * 1e3
+
+        if transform_names is None:
+            self.transform = None
+        else:
+            assert use_vg_event_repr
+            self.transform = Transform(names=transform_names)
 
         self.hdf5_path = os.path.join(self.root, f"{self.seq_name}.hdf5")
         self.dataset = h5py.File(self.hdf5_path, "r")
@@ -125,4 +131,8 @@ class MVSECDataset(Dataset):
             event_repr = self.vg.to_rgb_mono(event_repr)
             # sample["events_raw"] = events
             sample["events"] = event_repr
+
+        if self.transform is not None:
+            sample = self.transform(sample)
+
         return sample
