@@ -7,7 +7,7 @@ class GatedProjectionFusion(nn.Module):
     def __init__(self, nmods=2, dim=1024):
         super().__init__()
         self.nmods = nmods
-        self.proj_src = nn.Linear(dim * (nmods - 1), dim)
+        self.proj_src = nn.Linear(dim, dim)
         self.proj2 = nn.Linear(dim, dim)
         self.gate = nn.Linear(dim * 2, dim)
 
@@ -28,16 +28,25 @@ class GatedProjectionFusion(nn.Module):
 
 
 class TokenFusionTransformer(nn.Module):
-    def __init__(self, dim=1024, depth=2, heads=8, mlp_dim=1024, dropout=0.0):
+    def __init__(
+        self, dim=1024, depth=2, heads=8, mlp_dim=1024, dropout=0.0, attn_type="sa"
+    ):
         super().__init__()
+        self.attn_type = attn_type
+        self.t_cls = (
+            nn.TransformerEncoderLayer
+            if attn_type == "sa"
+            else nn.TransformerDecoderLayer
+        )
         self.layers = nn.ModuleList(
             [
-                nn.TransformerEncoderLayer(
+                self.t_cls(
                     d_model=dim,
                     nhead=heads,
                     dim_feedforward=mlp_dim,
                     dropout=dropout,
                     activation="gelu",
+                    batch_first=True,
                 )
                 for _ in range(depth)
             ]
@@ -50,11 +59,13 @@ class TokenFusionTransformer(nn.Module):
         """
         b, n, d = target.shape
 
-        x = torch.cat([src, target], dim=1)
-        x = rearrange(x, "b n d -> n b d")
-
-        for layer in self.layers:
-            x = layer(x)
-
-        x = rearrange(x, "n b d -> b n d")
-        return x[:, -target.shape[1] :]
+        if self.attn_type == "sa":
+            x = torch.cat([src, target], dim=1)
+            for layer in self.layers:
+                x = layer(x)
+            x = x[:, -target.shape[1] :]
+        else:
+            x = target
+            for layer in self.layers:
+                x = layer(tgt=x, memory=src)
+        return x
