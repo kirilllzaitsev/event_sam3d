@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 
+from event_sam3d.utils.common_utils import adjust_img_for_plt, adjust_img_for_torch
+from event_sam3d.utils.wavelet_utils import wavelet_decomposition
+
 
 def random_crop(img: np.ndarray, n: int) -> np.ndarray:
     h, w, _ = img.shape
@@ -87,4 +90,11 @@ class Transform:
         if "mblur" in self.names and np.random.rand() < self.probs["mblur"]:
             ksize = np.random.randint(self.blur_ksize_min, self.blur_ksize_max + 1)
             sample["rgb"] = motion_blur(sample["rgb"], ksize=ksize)
+        if "wavelet" in self.names:
+            rgb_feat = adjust_img_for_torch(sample["rgb"])
+            rgb_high_freq, rgb_low_freq = wavelet_decomposition(rgb_feat)
+            event_feat = adjust_img_for_torch(sample["events"])
+            event_high_freq, event_low_freq = wavelet_decomposition(event_feat)
+            sample["events"] = adjust_img_for_plt(event_high_freq)
+            sample["rgb"] = adjust_img_for_plt(rgb_low_freq)
         return sample
