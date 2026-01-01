@@ -87,6 +87,9 @@ def build_datasets(cfg):
         train_ds_names = train_ds_names[:1]
         val_ds_names = train_ds_names[:1]
         obj_names = obj_names[:1]
+        len_limit = cfg.overfit_n_samples
+    else:
+        len_limit = None
     train_datasets = {}
     val_datasets = {}
     for obj_name in obj_names:
@@ -94,6 +97,7 @@ def build_datasets(cfg):
             obj_name=obj_name,
             use_masks=True,
             use_vg_event_repr=True,
+            len_limit=len_limit,
         )
         for filename in train_ds_names:
             dataset = MVSECDataset(
@@ -152,7 +156,10 @@ class Trainer:
             event_image=batch["events"],
         )
         t_kwargs = dict(
-            image=batch["rgb"], mask=batch["mask"], seed=42, event_image=None
+            image=batch.get("rgb_clean", batch["rgb"]),
+            mask=batch["mask"],
+            seed=42,
+            event_image=None,
         )
         results_dict = self.model(s_kwargs=s_kwargs, t_kwargs=t_kwargs)
         results_dict["meta"] = {}
