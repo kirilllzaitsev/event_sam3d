@@ -21,17 +21,14 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
     for lname in s_embeds.keys():
         if "_attn" in lname:
             pass
-        elif "rgbe_fuser" in lname:
-            s_feat = s_embeds[lname][0]
-            t_feat = t_embeds["t_final_rgb_tokens"][0]
-            loss = F.l1_loss(s_feat, t_feat)
-            losses[0][lname].append(loss.item())
-            total_loss += loss
-            count += 1
         else:
             for input_cond_idx in range(len(s_embeds[lname])):
+                if "rgbe_fuser" in lname:
+                    t_lname = "t_final_rgb_tokens"
+                else:
+                    t_lname = lname
                 s_lout = s_embeds[lname][input_cond_idx]
-                t_lout = t_embeds[lname][input_cond_idx]
+                t_lout = t_embeds[t_lname][input_cond_idx]
                 s_feat = s_lout if is_tensor(s_lout) else s_lout["output"]
                 t_feat = t_lout if is_tensor(t_lout) else t_lout["output"]
                 if use_attn:
@@ -49,13 +46,11 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
     return {"total_loss": total_loss, "losses": losses, "count": count}
 
 
-def load_st_models(args, device="cpu", rank=0, exp_name=""):
+def load_st_models(args, block_idxs, device="cpu", rank=0):
     cur_plt_backend = plt.get_backend()
     sys.path.append(f"{RELATED_DIR}/rec/sam-3d-objects/notebook")
 
     from inference import Inference
-
-    from event_sam3d.img2event.model_utils import get_condition_embedder
 
     tag = "hf"
     config_path = (
@@ -101,8 +96,19 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
                 if i in [0, 3]
             ]
         )
+        p.condition_embedders.ss_condition_embedder.projection_nets = (
+            torch.nn.ModuleList(
+                [
+                    x
+                    for i, x in enumerate(
+                        p.condition_embedders.ss_condition_embedder.projection_nets
+                    )
+                    if i in [0, 3]
+                ]
+            )
+        )
 
-    block_idxs = [2] if args.do_debug else [2, 5, 9, 14, 19, 22]
+    # event module is the last in ss_generator.yaml
     event_module_idx = (
         len(s_model.condition_embedders.ss_condition_embedder.module_list) - 1
     )
@@ -227,6 +233,7 @@ def is_dist_avail_and_initialized():
 
 def fix_outdated_args(args):
     from event_sam3d.img2event.train import get_arg_parser
+
     parser = get_arg_parser()
 
     def noattr(x):
