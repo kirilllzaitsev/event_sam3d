@@ -60,6 +60,12 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
     t_model = Inference(
         config_path, compile=False, device=device, use_ckpt=not args.do_debug
     )._pipeline
+    ckpt_params = {}
+    if args.resume_dir is not None:
+        ckpt_params = dict(
+            ss_generator_cond_embedder_ckpt_path=f"{args.resume_dir}/best_ss_generator_cond_embedder.pt",
+            rgbe_fuser_ckpt_path=f"{args.resume_dir}/best_rgbe_fuser.pt",
+        )
     s_model = Inference(
         config_path,
         compile=False,
@@ -67,6 +73,7 @@ def load_st_models(args, device="cpu", rank=0, exp_name=""):
         device=device,
         use_ckpt=not args.do_debug,
         rgbe_fusion_type=args.rgbe_fusion_type,
+        **ckpt_params,
     )._pipeline
 
     for pset in [t_model.parameters(), s_model.parameters()]:
