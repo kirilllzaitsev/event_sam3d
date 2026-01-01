@@ -42,12 +42,21 @@ def motion_blur(img, ksize=5):
 class Transform:
 
     def __init__(
-        self, names, probs=None, crop_size=224, blur_ksize_min=5, blur_ksize_max=15
+        self,
+        names,
+        probs=None,
+        crop_size=224,
+        blur_ksize_min=5,
+        blur_ksize_max=15,
+        wv_levels_min=1,
+        wv_levels_max=3,
     ):
         self.names = names
         self.crop_size = crop_size
         self.blur_ksize_min = blur_ksize_min
         self.blur_ksize_max = blur_ksize_max
+        self.wv_levels_min = wv_levels_min
+        self.wv_levels_max = wv_levels_max
         self.probs = {n: 0.5 for n in names} if probs is None else probs
 
     def __call__(self, sample):
@@ -92,9 +101,14 @@ class Transform:
             sample["rgb"] = motion_blur(sample["rgb"], ksize=ksize)
         if "wavelet" in self.names:
             rgb_feat = adjust_img_for_torch(sample["rgb"])
-            rgb_high_freq, rgb_low_freq = wavelet_decomposition(rgb_feat)
+            wv_levels = np.random.randint(
+                self.wv_levels_min, self.wv_levels_max + 1
+            )
+            rgb_high_freq, rgb_low_freq = wavelet_decomposition(rgb_feat, levels=wv_levels)
             event_feat = adjust_img_for_torch(sample["events"])
-            event_high_freq, event_low_freq = wavelet_decomposition(event_feat)
+            event_high_freq, event_low_freq = wavelet_decomposition(
+                event_feat, levels=wv_levels
+            )
             sample["events"] = adjust_img_for_plt(event_high_freq)
             sample["rgb"] = adjust_img_for_plt(rgb_low_freq)
         return sample
