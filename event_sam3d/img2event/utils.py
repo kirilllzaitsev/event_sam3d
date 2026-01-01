@@ -218,6 +218,29 @@ def is_dist_avail_and_initialized():
     return True
 
 
+def fix_outdated_args(args):
+    from event_sam3d.img2event.train import get_arg_parser
+    parser = get_arg_parser()
+
+    def noattr(x):
+        return not hasattr(args, x)
+
+    def is_none(x):
+        return getattr(args, x, None) is None
+
+    if hasattr(args, "t_mlp_num_layers"):
+        args.rt_mlps_num_layers = args.t_mlp_num_layers
+
+    # for all args present in parser but not in args, set them to their default values
+    for group in parser._action_groups:
+        for action in group._group_actions:
+            arg_name = action.dest
+            if noattr(arg_name):
+                setattr(args, arg_name, action.default)
+
+    return args
+
+
 class EarlyStopping:
     def __init__(self, patience=5, delta=0, verbose=False):
         """
