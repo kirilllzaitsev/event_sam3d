@@ -17,6 +17,7 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
     # embeds=scales x layers
     losses = defaultdict(lambda: defaultdict(list))
     total_loss = 0.0
+    count = 0
     for lname in s_embeds.keys():
         if "_attn" in lname:
             pass
@@ -26,6 +27,7 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
             loss = F.l1_loss(s_feat, t_feat)
             losses[0][lname].append(loss.item())
             total_loss += loss
+            count += 1
         else:
             for input_cond_idx in range(len(s_embeds[lname])):
                 s_lout = s_embeds[lname][input_cond_idx]
@@ -42,7 +44,9 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
                 loss = F.l1_loss(s_feat, t_feat)
                 losses[input_cond_idx][lname].append(loss.item())
                 total_loss += loss
-    return {"total_loss": total_loss, "losses": losses}
+                count += 1
+    total_loss /= count
+    return {"total_loss": total_loss, "losses": losses, "count": count}
 
 
 def load_st_models(args, device="cpu", rank=0, exp_name=""):
