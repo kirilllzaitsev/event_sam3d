@@ -30,6 +30,7 @@ class MVSECDataset(Dataset):
         use_masks=True,
         use_vg_event_repr=False,
         obj_name="barrel",
+        len_limit=None,
     ):
         """ """
         self.seq_name = seq_name
@@ -40,6 +41,7 @@ class MVSECDataset(Dataset):
         self.obj_name = obj_name
         self.height = height
         self.width = width
+        self.len_limit = len_limit
 
         self.use_masks = use_masks
         self.use_vg_event_repr = use_vg_event_repr
@@ -79,9 +81,11 @@ class MVSECDataset(Dataset):
             self.num_frames = len(self.frame_ids)
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
+        if len_limit is not None:
+            self.num_frames = len_limit
 
     def __len__(self):
-        return len(self.frame_ids)
+        return self.num_frames
 
     def __repr__(self):
         return print_cls(
