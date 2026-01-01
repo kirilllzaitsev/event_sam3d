@@ -8,7 +8,7 @@ from event_sam3d.config import PROJ_DIR
 
 def load_esam3d(ckpt_name, device="cuda", ckpt_type="best"):
     from event_sam3d.img2event.train import Trainer, build_model
-    # best/latest
+
     ckpt_dir = f"{PROJ_DIR}/checkpoints/{ckpt_name}"
     cfg = argparse.Namespace(
         **yaml.load(open(f"{ckpt_dir}/config.yml"), Loader=yaml.UnsafeLoader)
@@ -38,13 +38,17 @@ def get_condition_embedder(pipe, use_event=True, ss_condition_embedder=None):
         if ss_condition_embedder is None
         else ss_condition_embedder
     )
+    target_keys = (
+        ["event_image", "rgb_event_image"] if use_event else ["image", "rgb_image"]
+    )
     condition_embedder = [
         x
         for x in ss_condition_embedder.embedder_list
-        if all(("event" if use_event else "image") in xx[0] for xx in x[1])
+        if all(target_keys[i] == xx[0] for i, xx in enumerate(x[1]))
     ]
-    assert len(condition_embedder) == 1 and len(condition_embedder[0]) == 2, len(
-        condition_embedder
+    assert len(condition_embedder) == 1 and len(condition_embedder[0]) == 2, (
+        len(condition_embedder),
+        len(condition_embedder[0]),
     )
     # same encoder for full/cropped imgs
     condition_embedder = condition_embedder[0][0]
