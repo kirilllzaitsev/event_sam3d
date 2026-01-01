@@ -359,6 +359,7 @@ def main(cfg):
         )
         wandb.define_metric("step")
         wandb.define_metric("epoch")
+        wandb.run.log_code(".")
         wandb.run.log_code(
             f"{PROJ_DIR}/event_sam3d/img2event",
             include_fn=lambda path: path.endswith(".py"),
@@ -412,7 +413,7 @@ def main(cfg):
         train_dataset,
         batch_size=cfg.batch_size,
         sampler=train_sampler,
-        shuffle=(train_sampler is None),
+        shuffle=(train_sampler is None and not cfg.do_overfit),
         num_workers=cfg.num_workers,
     )
 
@@ -430,8 +431,8 @@ def main(cfg):
         print(f"# CLI command:\npython {' '.join(sys.argv)}")
         print(f"# Experiment created at {wandb.run.get_url()}")
         print(f"# {ckpt_dir=}")
-        print(f"# TRAIN DS:\n{train_dataset}")
-        print(f"# VAL DS:\n{val_dataset}")
+        print(f"# TRAIN DS:\n{train_dataset}\n{len(train_dataset)=}")
+        print(f"# VAL DS:\n{val_dataset}\n{len(val_dataset)=}")
         if "SLURM_JOB_ID" in os.environ:
             print(f"# SLURM_JOB_ID: {os.environ['SLURM_JOB_ID']}")
 
@@ -447,18 +448,14 @@ def main(cfg):
 
     # Optionally resume_path
     start_epoch = 0
+    end_epoch = cfg.epochs
     best_val_loss = float("inf")
 
-    if cfg.resume_path is not None and os.path.isfile(cfg.resume_path):
-        map_location = {"cuda:0": f"cuda:{local_rank}"}
-        ckpt = torch.load(cfg.resume_path, map_location=map_location)
-        model.load_state_dict(ckpt["model"])
-        optimizer.load_state_dict(ckpt["optimizer"])
-        if cfg.use_scheduler:
-            scheduler.load_state_dict(ckpt["scheduler"])
-        scaler.load_state_dict(ckpt["scaler"])
-        start_epoch = ckpt["epoch"] + 1
-        best_val_loss = ckpt.get("best_val_loss", best_val_loss)
+    if cfg.resume_dir is not None and os.path.exists(f"{cfg.resume_dir}/state.pt"):
+        state = torch.load(f"{cfg.resume_dir}/state.pt", map_location="cpu")
+        start_epoch = state["epoch"] + 1
+        end_epoch = start_epoch + cfg.epochs
+        best_val_loss = state["best_val_loss"]
 
     if world_size > 1:
         model = DDP(
@@ -475,7 +472,7 @@ def main(cfg):
         verbose=True,
     )
     pbar = tqdm(
-        range(start_epoch, cfg.epochs), disable=not is_main_process(rank), desc="Epochs"
+        range(start_epoch, end_epoch), disable=not is_main_process(rank), desc="Epochs"
     )
     for epoch in pbar:
         train_loss = trainer.train_one_epoch(
@@ -495,7 +492,7 @@ def main(cfg):
 
         desc = f"{epoch=}. Train Loss: {train_loss:.4f}"
         if not cfg.do_overfit and (
-            epoch % cfg.val_epoch_freq == 0 or (epoch == cfg.epochs - 1)
+            epoch % cfg.val_epoch_freq == 0 or (epoch == end_epoch - 1)
         ):
             val_losses = trainer.validate(
                 val_loader=val_loader,
@@ -544,7 +541,11 @@ def main(cfg):
             break
 
     if cfg.do_overfit and cfg.do_save_ckpt:
-        save_ckpt(ckpt_dir=ckpt_dir, model_noddp=model_noddp)
+        state = {
+            "epoch": epoch,
+            "best_val_loss": best_val_loss,
+        }
+        save_ckpt(ckpt_dir=ckpt_dir, model_noddp=model_noddp, state=state)
 
     if is_main_process(rank):
         wandb.finish()
@@ -591,7 +592,7 @@ def get_arg_parser():
 
     model_args = p.add_argument_group("model")
     model_args.add_argument(
-        "--rgbe_fusion_type", default="gated", choices=["gated", "attn"]
+        "--rgbe_fusion_type", default="gated", choices=["gated", "attn", "cattn"]
     )
 
     data_args = p.add_argument_group("data")
@@ -604,12 +605,13 @@ def get_arg_parser():
     pipe_args.add_argument("--log_step_freq", type=int, default=20)
     pipe_args.add_argument("--val_epoch_freq", type=int, default=1)
     pipe_args.add_argument("--ckpt_dir", default=f"{PROJ_DIR}/checkpoints")
-    pipe_args.add_argument("--resume_path", default=None)
+    pipe_args.add_argument("--resume_dir", help="Dir of a previous experiment")
     pipe_args.add_argument("--exp_name", default="test")
     pipe_args.add_argument("--use_wandb", action="store_true")
     pipe_args.add_argument("--do_save_ckpt", action="store_true")
     pipe_args.add_argument("--do_debug", action="store_true")
     pipe_args.add_argument("--do_overfit", action="store_true")
+    pipe_args.add_argument("--overfit_n_samples", type=int, default=100)
 
     return p
 
@@ -624,6 +626,8 @@ if __name__ == "__main__":
         cfg.exp_name += "_overfit"
     if cfg.do_debug:
         cfg.exp_name += "_debug"
+    if cfg.resume_dir:
+        cfg.exp_name += "_resume"
     if cfg.event_window_ms != p.get_default("event_window_ms"):
         cfg.exp_name += f"_windowms-{cfg.event_window_ms}"
     cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
