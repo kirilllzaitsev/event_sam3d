@@ -138,10 +138,12 @@ def build_optimizer(model, cfg, use_scheduler=False):
 
 class Trainer:
 
-    def __init__(self, model, cfg):
+    def __init__(self, model, cfg, do_hist=False):
+        self.do_hist = do_hist
         self.cfg = cfg
         self.model = model
         self.model_wo_ddp = model.module if isinstance(model, DDP) else model
+        self.hist = defaultdict(list)
 
     def ts_forward(
         self,
@@ -204,6 +206,9 @@ class Trainer:
                 )
                 losses = self.calc_losses(outputs)
                 loss = losses["loss"]
+            if self.do_hist:
+                for k, v in losses.items():
+                    self.hist[k].append(detach_and_cpu(v))
 
             scaler.scale(loss).backward()
             # Optional: gradient clipping
