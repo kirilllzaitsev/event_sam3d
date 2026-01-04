@@ -1,3 +1,4 @@
+import json
 import os
 import re
 
@@ -31,6 +32,8 @@ class MVSECDataset(Dataset):
         use_vg_event_repr=False,
         obj_name="barrel",
         len_limit=None,
+        include_only_if_enough_events=False,
+        min_num_events=500,
     ):
         """ """
         self.seq_name = seq_name
@@ -45,6 +48,7 @@ class MVSECDataset(Dataset):
 
         self.use_masks = use_masks
         self.use_vg_event_repr = use_vg_event_repr
+        self.include_only_if_enough_events = include_only_if_enough_events
 
         self.hw = (height, width)
         self.half_event_window_us = (event_window_ms // 2) * 1e3
@@ -73,16 +77,26 @@ class MVSECDataset(Dataset):
                 int(re.search("\d+", x).group())
                 for x in (set([x.split("_")[-1] for x in paths]))
             }
-            matched_frame_idxs = [
-                i for i, fid in enumerate(self.frame_ids) if fid in target_frame_ids
-            ]
-            self.frame_ids = [self.frame_ids[i] for i in matched_frame_idxs]
-            self.frame_ts = self.frame_ts[matched_frame_idxs]
-            self.num_frames = len(self.frame_ids)
+            self.filter_frame_ids(target_frame_ids)
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
         if len_limit is not None:
             self.num_frames = len_limit
+        if include_only_if_enough_events:
+            assert min_num_events is not None
+            stats = json.load(open(f"{self.root}/stats.json"))[self.seq_name]
+            target_frame_ids = [
+                i for i, n in enumerate(stats[str(event_window_ms)]["num_events"]) if n > min_num_events
+            ]
+            self.filter_frame_ids(target_frame_ids)
+
+    def filter_frame_ids(self, target_frame_ids):
+        matched_frame_idxs = [
+            i for i, fid in enumerate(self.frame_ids) if fid in target_frame_ids
+        ]
+        self.frame_ids = [self.frame_ids[i] for i in matched_frame_idxs]
+        self.frame_ts = self.frame_ts[matched_frame_idxs]
+        self.num_frames = len(self.frame_ids)
 
     def __len__(self):
         return self.num_frames
