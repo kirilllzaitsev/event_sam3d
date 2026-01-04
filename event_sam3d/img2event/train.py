@@ -30,7 +30,11 @@ from event_sam3d.img2event.utils import (
     reduce_dict,
     reduce_tensor,
 )
-from event_sam3d.utils.common_utils import adjust_depth_for_plt, adjust_img_for_plt
+from event_sam3d.utils.common_utils import (
+    adjust_depth_for_plt,
+    adjust_img_for_plt,
+    detach_and_cpu,
+)
 from event_sam3d.utils.misc_utils import print_args, set_seed
 
 
@@ -59,15 +63,16 @@ def make_vis_loaders(train_dataset, val_dataset, cfg):
     return train_vis_loader, val_vis_loader
 
 
-def build_model(cfg, rank=0, device="cuda"):
+def build_model(cfg, rank=0, device="cuda", block_idxs=None, use_only_encoder=True, is_train=True):
     """
     Return a regular (non-DDP) model.
     """
+    if block_idxs is None:
+        block_idxs = [2] if cfg.do_debug else [2, 5, 9, 14, 19, 22]
     s_model, t_model = load_st_models(
-        cfg, rank=rank, exp_name=cfg.exp_name, device=device
+        cfg, block_idxs=block_idxs, rank=rank, device=device, is_train=is_train, use_only_encoder=use_only_encoder
     )
     forward_args = None
-    block_idxs = [2] if cfg.do_debug else [2, 5, 8, 11, 14, 17, 20, 23]
     ts_model = TeacherStudent(
         s=s_model,
         t=t_model,
@@ -80,8 +85,8 @@ def build_datasets(cfg):
     """
     Return train_dataset, val_dataset.
     """
-    train_ds_names = MVSEC_SCENES
     val_ds_names = cfg.val_ds_names
+    train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
     obj_names = cfg.obj_names
     if cfg.do_overfit:
         train_ds_names = train_ds_names[:1]
@@ -98,6 +103,8 @@ def build_datasets(cfg):
             use_masks=True,
             use_vg_event_repr=True,
             len_limit=len_limit,
+            include_only_if_enough_events=cfg.include_only_if_enough_events,
+            min_num_events=cfg.min_num_events,
         )
         for filename in train_ds_names:
             dataset = MVSECDataset(
@@ -109,6 +116,7 @@ def build_datasets(cfg):
         for filename in val_ds_names:
             dataset = MVSECDataset(
                 seq_name=filename,
+                transform_names=cfg.transform_names,
                 **common_kwargs,
             )
             val_datasets[f"{filename}_{obj_name}"] = dataset
@@ -441,7 +449,7 @@ def main(cfg):
 
     if is_main_process(rank):
         print(f"# CLI command:\npython {' '.join(sys.argv)}")
-        print(f"# Experiment created at {wandb.run.get_url()}")
+        print(f"# Experiment created at {wandb.run.url}")
         print(f"# {ckpt_dir=}")
         print(f"# TRAIN DS:\n{train_dataset}\n{len(train_dataset)=}")
         print(f"# VAL DS:\n{val_dataset}\n{len(val_dataset)=}")
@@ -599,7 +607,7 @@ def get_arg_parser():
     train_args.add_argument("--use_amp", action="store_true")
     train_args.add_argument("--use_scheduler", action="store_true")
     train_args.add_argument("--grad_clip", type=float, default=1.0)
-    train_args.add_argument("--es_patience_epochs", type=int, default=16)
+    train_args.add_argument("--es_patience_epochs", type=int, default=20)
     train_args.add_argument("--es_delta", type=float, default=0.0)
 
     model_args = p.add_argument_group("model")
@@ -608,10 +616,12 @@ def get_arg_parser():
     )
 
     data_args = p.add_argument_group("data")
-    data_args.add_argument("--val_ds_names", nargs="+", default=["indoor_flying2_data"])
+    data_args.add_argument("--val_ds_names", nargs="+", default=["indoor_flying4_data"])
     data_args.add_argument("--event_window_ms", type=int, default=50)
     data_args.add_argument("--obj_names", nargs="+", default=["barrel"])
     data_args.add_argument("--transform_names", nargs="*")
+    data_args.add_argument("--include_only_if_enough_events", action="store_true")
+    data_args.add_argument("--min_num_events", type=int, default=500)
 
     pipe_args = p.add_argument_group("pipeline")
     pipe_args.add_argument("--log_step_freq", type=int, default=20)
@@ -642,9 +652,15 @@ if __name__ == "__main__":
         cfg.exp_name += "_resume"
     if cfg.event_window_ms != p.get_default("event_window_ms"):
         cfg.exp_name += f"_windowms-{cfg.event_window_ms}"
+    if cfg.include_only_if_enough_events:
+        cfg.exp_name += f"_min-events-{cfg.min_num_events}"
     cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     exp_name = cfg.exp_name + f"_{current_datetime}"
+    if exp_name.startswith("_"):
+        exp_name = exp_name[1:]
+    cfg.exp_name = exp_name.replace("__", "_")
+    main(cfg)
     if exp_name.startswith("_"):
         exp_name = exp_name[1:]
     cfg.exp_name = exp_name.replace("__", "_")
