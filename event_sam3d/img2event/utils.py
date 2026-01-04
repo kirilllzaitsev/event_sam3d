@@ -25,6 +25,8 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
             for input_cond_idx in range(len(s_embeds[lname])):
                 if "rgbe_fuser" in lname:
                     t_lname = "t_final_rgb_tokens"
+                elif "t_final_rgb_tokens" in lname and "t_input_rgb_tokens" in t_embeds:
+                    t_lname = "t_input_rgb_tokens"
                 else:
                     t_lname = lname
                 s_lout = s_embeds[lname][input_cond_idx]
@@ -46,16 +48,17 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
     return {"total_loss": total_loss, "losses": losses, "count": count}
 
 
-def load_st_models(args, block_idxs, device="cpu", rank=0):
+def load_st_models(args, block_idxs, device="cpu", rank=0, is_train=True, use_only_encoder=True):
     cur_plt_backend = plt.get_backend()
     sys.path.append(f"{RELATED_DIR}/rec/sam-3d-objects/notebook")
 
     from inference import Inference
 
     tag = "hf"
-    config_path = (
-        f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}/pipeline_encoder.yaml"
+    config_base_path = (
+        f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}"
     )
+    config_path = f"{config_base_path}/{'pipeline_encoder.yaml' if use_only_encoder else 'pipeline.yaml'}"
     t_model = Inference(
         config_path, compile=False, device=device, use_ckpt=not args.do_debug
     )._pipeline
@@ -78,6 +81,9 @@ def load_st_models(args, block_idxs, device="cpu", rank=0):
     for pset in [t_model.parameters(), s_model.parameters()]:
         for p in pset:
             p.requires_grad = False
+    t_model.eval()
+    if not is_train:
+        s_model.eval()
 
     for p in [t_model, s_model]:
         p.condition_embedders.ss_condition_embedder.embedder_list = [
@@ -114,7 +120,7 @@ def load_st_models(args, block_idxs, device="cpu", rank=0):
     )
     trainable_param_names = []
     for n, p in s_model.named_parameters():
-        if (
+        if is_train and (
             f"module_list.{event_module_idx}" in n
             and (
                 "patch_embed" in n
