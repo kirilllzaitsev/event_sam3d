@@ -48,7 +48,7 @@ class Transform:
         crop_size=224,
         blur_ksize_min=5,
         blur_ksize_max=15,
-        wv_levels_min=1,
+        wv_levels_min=0,
         wv_levels_max=3,
     ):
         self.names = names
@@ -104,11 +104,12 @@ class Transform:
             wv_levels = np.random.randint(
                 self.wv_levels_min, self.wv_levels_max + 1
             )
-            rgb_high_freq, rgb_low_freq = wavelet_decomposition(rgb_feat, levels=wv_levels)
-            event_feat = adjust_img_for_torch(sample["events"])
-            event_high_freq, event_low_freq = wavelet_decomposition(
-                event_feat, levels=wv_levels
-            )
-            sample["events"] = adjust_img_for_plt(event_high_freq)
-            sample["rgb"] = adjust_img_for_plt(rgb_low_freq)
+            if wv_levels > 0:
+                rgb_high_freq, rgb_low_freq = wavelet_decomposition(rgb_feat, levels=wv_levels)
+                event_feat = adjust_img_for_torch(sample["events"])
+                event_high_freq, event_low_freq = wavelet_decomposition(
+                    event_feat, levels=wv_levels
+                )
+                sample["events"] = adjust_img_for_plt(event_high_freq)
+                sample["rgb"] = adjust_img_for_plt(rgb_low_freq)
         return sample
