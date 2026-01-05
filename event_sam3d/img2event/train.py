@@ -18,6 +18,7 @@ from tqdm import tqdm
 from event_sam3d.config import IS_CLUSTER, MVSEC_SCENES, PROJ_DIR, RELATED_DIR
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
+from event_sam3d.datasets.rgbe_ds import RGBEDataset
 from event_sam3d.img2event.model import TeacherStudent
 from event_sam3d.img2event.model_utils import get_condition_embedder
 from event_sam3d.img2event.utils import (
@@ -63,14 +64,21 @@ def make_vis_loaders(train_dataset, val_dataset, cfg):
     return train_vis_loader, val_vis_loader
 
 
-def build_model(cfg, rank=0, device="cuda", block_idxs=None, use_only_encoder=True, is_train=True):
+def build_model(
+    cfg, rank=0, device="cuda", block_idxs=None, use_only_encoder=True, is_train=True
+):
     """
     Return a regular (non-DDP) model.
     """
     if block_idxs is None:
         block_idxs = [2] if cfg.do_debug else [2, 5, 9, 14, 19, 22]
     s_model, t_model = load_st_models(
-        cfg, block_idxs=block_idxs, rank=rank, device=device, is_train=is_train, use_only_encoder=use_only_encoder
+        cfg,
+        block_idxs=block_idxs,
+        rank=rank,
+        device=device,
+        is_train=is_train,
+        use_only_encoder=use_only_encoder,
     )
     forward_args = None
     ts_model = TeacherStudent(
@@ -97,6 +105,7 @@ def build_datasets(cfg):
         len_limit = None
     train_datasets = {}
     val_datasets = {}
+    ds_cls = MVSECDataset if cfg.ds_name == "mvsec" else RGBEDataset
     for obj_name in obj_names:
         common_kwargs = dict(
             obj_name=obj_name,
@@ -107,16 +116,28 @@ def build_datasets(cfg):
             min_num_events=cfg.min_num_events,
         )
         for filename in train_ds_names:
-            dataset = MVSECDataset(
-                seq_name=filename,
+            if cfg.ds_name == "mvsec":
+                other_kwargs = dict(
+                    seq_name=filename,
+                )
+            else:
+                other_kwargs = dict(split='train')
+            dataset = ds_cls(
                 transform_names=cfg.transform_names,
+                **other_kwargs,
                 **common_kwargs,
             )
             train_datasets[f"{filename}_{obj_name}"] = dataset
         for filename in val_ds_names:
-            dataset = MVSECDataset(
-                seq_name=filename,
+            if cfg.ds_name == "mvsec":
+                other_kwargs = dict(
+                    seq_name=filename,
+                )
+            else:
+                other_kwargs = dict(split='test-normal', test_subsplit=filename)
+            dataset = ds_cls(
                 transform_names=cfg.transform_names,
+                **other_kwargs,
                 **common_kwargs,
             )
             val_datasets[f"{filename}_{obj_name}"] = dataset
@@ -622,6 +643,7 @@ def get_arg_parser():
     data_args.add_argument("--transform_names", nargs="*")
     data_args.add_argument("--include_only_if_enough_events", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
+    data_args.add_argument("--ds_name", default="mvsec", choices=["mvsec", "rgbe"])
 
     pipe_args = p.add_argument_group("pipeline")
     pipe_args.add_argument("--log_step_freq", type=int, default=20)
@@ -657,10 +679,6 @@ if __name__ == "__main__":
     cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     exp_name = cfg.exp_name + f"_{current_datetime}"
-    if exp_name.startswith("_"):
-        exp_name = exp_name[1:]
-    cfg.exp_name = exp_name.replace("__", "_")
-    main(cfg)
     if exp_name.startswith("_"):
         exp_name = exp_name[1:]
     cfg.exp_name = exp_name.replace("__", "_")

@@ -86,7 +86,9 @@ class MVSECDataset(Dataset):
             assert min_num_events is not None
             stats = json.load(open(f"{self.root}/stats.json"))[self.seq_name]
             target_frame_ids = [
-                i for i, n in enumerate(stats[str(event_window_ms)]["num_events"]) if n > min_num_events
+                i
+                for i, n in enumerate(stats[str(event_window_ms)]["num_events"])
+                if n > min_num_events
             ]
             self.filter_frame_ids(target_frame_ids)
 
