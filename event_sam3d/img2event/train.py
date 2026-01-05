@@ -94,8 +94,19 @@ def build_datasets(cfg):
     Return train_dataset, val_dataset.
     """
     val_ds_names = cfg.val_ds_names
-    train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
     obj_names = cfg.obj_names
+    if cfg.ds_name == "mvsec":
+        train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
+        if val_ds_names is None:
+            val_ds_names = ["indoor_flying4_data"]
+        if obj_names is None:
+            obj_names = ["barrel"]
+    else:
+        train_ds_names = ["train"]
+        if val_ds_names is None:
+            val_ds_names = ["easy", "medium", "hard"]
+        if obj_names is None:
+            obj_names = ["person"]
     if cfg.do_overfit:
         train_ds_names = train_ds_names[:1]
         val_ds_names = train_ds_names[:1]
@@ -121,7 +132,7 @@ def build_datasets(cfg):
                     seq_name=filename,
                 )
             else:
-                other_kwargs = dict(split='train')
+                other_kwargs = dict(split="train")
             dataset = ds_cls(
                 transform_names=cfg.transform_names,
                 **other_kwargs,
@@ -134,7 +145,7 @@ def build_datasets(cfg):
                     seq_name=filename,
                 )
             else:
-                other_kwargs = dict(split='test-normal', test_subsplit=filename)
+                other_kwargs = dict(split="test-normal", test_subsplit=filename)
             dataset = ds_cls(
                 transform_names=cfg.transform_names,
                 **other_kwargs,
@@ -637,9 +648,9 @@ def get_arg_parser():
     )
 
     data_args = p.add_argument_group("data")
-    data_args.add_argument("--val_ds_names", nargs="+", default=["indoor_flying4_data"])
+    data_args.add_argument("--val_ds_names", nargs="*")
     data_args.add_argument("--event_window_ms", type=int, default=50)
-    data_args.add_argument("--obj_names", nargs="+", default=["barrel"])
+    data_args.add_argument("--obj_names", nargs="*")
     data_args.add_argument("--transform_names", nargs="*")
     data_args.add_argument("--include_only_if_enough_events", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
