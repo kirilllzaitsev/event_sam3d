@@ -24,7 +24,7 @@ class MVSECDataset(Dataset):
         height=260,
         width=346,
         event_window_ms=50,
-        transform_names=None,
+        transform=None,
         mode="train",
         event_representation=None,
         nr_temporal_bins=5,
@@ -45,6 +45,7 @@ class MVSECDataset(Dataset):
         self.height = height
         self.width = width
         self.len_limit = len_limit
+        self.transform = transform
 
         self.use_masks = use_masks
         self.use_vg_event_repr = use_vg_event_repr
@@ -52,12 +53,6 @@ class MVSECDataset(Dataset):
 
         self.hw = (height, width)
         self.half_event_window_us = (event_window_ms // 2) * 1e3
-
-        if transform_names is None:
-            self.transform = None
-        else:
-            assert use_vg_event_repr
-            self.transform = Transform(names=transform_names)
 
         self.hdf5_path = os.path.join(self.root, f"{self.seq_name}.hdf5")
         self.dataset = h5py.File(self.hdf5_path, "r")
@@ -80,8 +75,6 @@ class MVSECDataset(Dataset):
             self.filter_frame_ids(target_frame_ids)
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
-        if len_limit is not None:
-            self.num_frames = len_limit
         if include_only_if_enough_events:
             assert min_num_events is not None
             stats = json.load(open(f"{self.root}/stats.json"))[self.seq_name]
@@ -91,6 +84,8 @@ class MVSECDataset(Dataset):
                 if n > min_num_events
             ]
             self.filter_frame_ids(target_frame_ids)
+        if len_limit is not None:
+            self.num_frames = min(self.num_frames, len_limit)
 
     def filter_frame_ids(self, target_frame_ids):
         matched_frame_idxs = [

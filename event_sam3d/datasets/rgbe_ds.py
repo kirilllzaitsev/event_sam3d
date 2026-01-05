@@ -20,7 +20,7 @@ class RGBEDataset(Dataset):
         height=260,
         width=346,
         event_window_ms=50,
-        transform_names=None,
+        transform=None,
         use_masks=True,
         use_vg_event_repr=False,
         obj_name="person",
@@ -36,7 +36,7 @@ class RGBEDataset(Dataset):
         self.height = height
         self.width = width
         self.event_window_ms = event_window_ms
-        self.transform_names = transform_names
+        self.transform = transform
         self.obj_name = obj_name
         self.len_limit = len_limit
         self.min_num_events = min_num_events
@@ -74,7 +74,7 @@ class RGBEDataset(Dataset):
             self.rgb_paths = [
                 p for p, m in zip(self.rgb_paths, mask_paths) if os.path.exists(m)
             ]
-        self.num_frames = len(self.rgb_paths)
+        self.num_frames = len(self.rgb_paths) if len_limit is None else len_limit
 
     def __len__(self):
         return self.num_frames
@@ -103,5 +103,8 @@ class RGBEDataset(Dataset):
             sample["events"] = (
                 sample["events"] - self.evimg_pixel_mean
             ) / self.evimg_pixel_std
+
+        if self.transform is not None:
+            sample = self.transform(sample)
 
         return sample

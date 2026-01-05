@@ -19,6 +19,7 @@ from event_sam3d.config import IS_CLUSTER, MVSEC_SCENES, PROJ_DIR, RELATED_DIR
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
 from event_sam3d.datasets.rgbe_ds import RGBEDataset
+from event_sam3d.datasets.transforms import Transform
 from event_sam3d.img2event.model import TeacherStudent
 from event_sam3d.img2event.model_utils import get_condition_embedder
 from event_sam3d.img2event.utils import (
@@ -117,6 +118,12 @@ def build_datasets(cfg):
     train_datasets = {}
     val_datasets = {}
     ds_cls = MVSECDataset if cfg.ds_name == "mvsec" else RGBEDataset
+
+    if cfg.transform_names is None:
+        transform = None
+    else:
+        transform = Transform(names=cfg.transform_names)
+
     for obj_name in obj_names:
         common_kwargs = dict(
             obj_name=obj_name,
@@ -134,7 +141,7 @@ def build_datasets(cfg):
             else:
                 other_kwargs = dict(split="train")
             dataset = ds_cls(
-                transform_names=cfg.transform_names,
+                transform=transform,
                 **other_kwargs,
                 **common_kwargs,
             )
@@ -147,7 +154,7 @@ def build_datasets(cfg):
             else:
                 other_kwargs = dict(split="test-normal", test_subsplit=filename)
             dataset = ds_cls(
-                transform_names=cfg.transform_names,
+                transform=transform,
                 **other_kwargs,
                 **common_kwargs,
             )
