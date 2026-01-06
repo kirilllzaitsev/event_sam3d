@@ -52,24 +52,17 @@ class TeacherStudent(nn.Module):
         self.t_hooks = set_hooks(
             self.t, self.t_embeds, use_event=False, block_idxs=self.block_idxs
         )
-        layer = self.s.condition_embedders["ss_condition_embedder"]
-        hook = layer.register_forward_hook(
-            get_hook(
-                "t_final_rgb_tokens",
-                embeds=self.s_embeds,
-                fn=functools.partial(dict_fn, k="rgb_image_tokens"),
+        layer_s = self.s.condition_embedders["ss_condition_embedder"]
+        layer_t = self.t.condition_embedders["ss_condition_embedder"]
+        for k in ["rgb_image_tokens", "image_tokens"]:
+            hook = layer_s.register_forward_hook(
+                get_hook(k, embeds=self.s_embeds, fn=functools.partial(dict_fn, k=k))
             )
-        )
-        self.s_hooks.append(hook)
-        layer = self.t.condition_embedders["ss_condition_embedder"]
-        hook = layer.register_forward_hook(
-            get_hook(
-                "t_final_rgb_tokens",
-                embeds=self.t_embeds,
-                fn=functools.partial(dict_fn, k="rgb_image_tokens"),
+            self.s_hooks.append(hook)
+            hook = layer_t.register_forward_hook(
+                get_hook(k, embeds=self.t_embeds, fn=functools.partial(dict_fn, k=k))
             )
-        )
-        self.t_hooks.append(hook)
+            self.t_hooks.append(hook)
 
     def forward(self, s_kwargs, t_kwargs=None, **kwargs):
         self.s_embeds.clear()
