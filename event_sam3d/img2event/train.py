@@ -97,11 +97,11 @@ def build_datasets(cfg):
     val_ds_names = cfg.val_ds_names
     obj_names = cfg.obj_names
     if cfg.ds_name == "mvsec":
-        train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
         if val_ds_names is None:
             val_ds_names = ["indoor_flying4_data"]
         if obj_names is None:
             obj_names = ["barrel"]
+        train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
     else:
         train_ds_names = ["train"]
         if val_ds_names is None:
@@ -418,12 +418,12 @@ def main(cfg):
         )
         wandb.define_metric("step")
         wandb.define_metric("epoch")
-        wandb.run.log_code(".")
-        wandb.run.log_code(
+        run.log_code(".")
+        run.log_code(
             f"{PROJ_DIR}/event_sam3d/img2event",
             include_fn=lambda path: path.endswith(".py"),
         )
-        wandb.run.log_code(
+        run.log_code(
             f"{RELATED_DIR}/rec/sam-3d-objects/sam3d_objects/pipeline",
             include_fn=lambda path: path.endswith(".py"),
         )
@@ -431,14 +431,14 @@ def main(cfg):
         cfg_vars = vars(cfg)
         meta = {
             "cli_args": cli_args,
-            "wandb_run_id": wandb.run.id,
+            "wandb_run_id": run.id,
         }
         print(cli_args)
         print_args(cfg, logger=None)
         cfg_vars["meta"] = meta
         with open(os.path.join(ckpt_dir, "config.yml"), "w") as file:
             yaml.dump(cfg_vars, file)
-        wandb.run.save(os.path.join(ckpt_dir, "config.yml"))
+        run.save(os.path.join(ckpt_dir, "config.yml"))
         if IS_CLUSTER:
             wandb.log(
                 {"jobid": os.environ.get("SLURM_JOB_ID", "jupyter"), "cluster": 1}
@@ -692,9 +692,14 @@ if __name__ == "__main__":
         cfg.exp_name += "_resume"
     if cfg.event_window_ms != p.get_default("event_window_ms"):
         cfg.exp_name += f"_windowms-{cfg.event_window_ms}"
+    if cfg.transform_names is not None:
+        cfg.exp_name += f"_augm-" + "-".join(
+            ["wv" if t == "wavelet" else t[:2] for t in cfg.transform_names]
+        )
     if cfg.include_only_if_enough_events:
         cfg.exp_name += f"_min-events-{cfg.min_num_events}"
     cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
+    cfg.exp_name += f"_ds-{cfg.ds_name}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     exp_name = cfg.exp_name + f"_{current_datetime}"
     if exp_name.startswith("_"):
