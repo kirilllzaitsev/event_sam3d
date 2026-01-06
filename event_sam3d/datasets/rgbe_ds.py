@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from event_sam3d.config import RGBE_DIR
 from event_sam3d.utils.common_utils import cast_to_numpy
 from event_sam3d.utils.io import load_color
-from event_sam3d.utils.misc_utils import get_ordered_paths
+from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
 
 
 class RGBEDataset(Dataset):
@@ -24,7 +24,7 @@ class RGBEDataset(Dataset):
         use_masks=True,
         use_vg_event_repr=False,
         obj_name="person",
-        test_subsplit="medium",
+        test_subsplit=None,
         len_limit=None,
         include_only_if_enough_events=False,
         min_num_events=500,
@@ -55,8 +55,9 @@ class RGBEDataset(Dataset):
                 for line in open(os.path.join(self.root, "eventsam_split.txt"))
             ]
             self.rgb_paths = [f"{self.root}/{p}" for p in rgb_paths]
-            self.data_dirs = set([p.split("/")[0] for p in rgb_paths])
+            self.data_dirs = list(set([p.split("/")[0] for p in rgb_paths]))
         else:
+            assert test_subsplit is not None
             self.data_dirs = [
                 f"{self.root}/{line.rstrip()}"
                 for line in open(os.path.join(self.root, f"{test_subsplit}.txt"))
@@ -79,6 +80,13 @@ class RGBEDataset(Dataset):
     def __len__(self):
         return self.num_frames
 
+    def __repr__(self):
+        return print_cls(
+            self,
+            excluded_attrs=["rgb_paths", "data_dirs", "image_pixel_mean", "image_pixel_std", "evimg_pixel_mean", "evimg_pixel_std"],
+            extra_str=f"{len(self.rgb_paths)=} {self.rgb_paths[:5]=} {self.rgb_paths[-5:]=}\n{len(self.data_dirs)=} {self.data_dirs[:5]=} {self.data_dirs[-5:]=}",
+        )
+
     def __getitem__(self, index):
         image_path = self.rgb_paths[index]
         evimg_path = image_path.replace("rgb_image/", "voxel_image/")
@@ -87,6 +95,7 @@ class RGBEDataset(Dataset):
         sample = {
             "rgb": image,
             "events": evimg,
+            "path": image_path,
         }
         if self.use_masks:
             sam3_res = torch.load(
