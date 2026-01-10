@@ -8,13 +8,13 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.distributed as dist
-import wandb
 import yaml
 from torch.nn import functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler, Subset
 from tqdm import tqdm
 
+import wandb
 from event_sam3d.config import IS_CLUSTER, MVSEC_SCENES, PROJ_DIR, RELATED_DIR
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
@@ -171,8 +171,26 @@ def build_optimizer(model, cfg, use_scheduler=False):
     """
     Return optimizer (and optionally scheduler).
     """
+    params_fuser = []
+    params_patch_embed = []
+    event_module_idx = (
+        len(model.s.condition_embedders.ss_condition_embedder.module_list) - 1
+    )
+    params_others = []
+    for name, param in model.named_parameters():
+        if "rgbe_fuser" in name:
+            params_fuser.append(param)
+        elif f"module_list.{event_module_idx}" in name and ("patch_embed" in name):
+            params_patch_embed.append(param)
+        else:
+            params_others.append(param)
     optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
+        [
+            {"params": params_others, "lr": cfg.lr},
+            {"params": params_fuser, "lr": cfg.lr * 5},
+            {"params": params_patch_embed, "lr": cfg.lr * 2},
+        ],
+        weight_decay=cfg.weight_decay,
     )
     if use_scheduler:
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -502,7 +520,7 @@ def main(cfg):
         build_model_res["forward_args"],
     )
     model_noddp = model.module if isinstance(model, DDP) else model
-    optimizer, scheduler = build_optimizer(model, cfg, use_scheduler=cfg.use_scheduler)
+    optimizer, scheduler = build_optimizer(model_noddp, cfg, use_scheduler=cfg.use_scheduler)
     scaler = torch.amp.GradScaler("cuda", enabled=cfg.use_amp)
 
     # Optionally resume_path
