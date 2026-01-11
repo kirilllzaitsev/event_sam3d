@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import numpy as np
@@ -100,10 +101,10 @@ class EventReplicaDataset:
             "rgb_clean": rgb_clean,
             "events": events,
             "rgb_path": rgb_path,
-            "frame_id": Path(rgb_path).stem,
+            "frame_name": Path(rgb_path).stem,
         }
         if self.use_masks:
-            sam3_res_path = f'{rgb_path.replace("rgb_image/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
+            sam3_res_path = f'{rgb_path.replace("original_images/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
             mask = load_sam3_res(sam3_res_path)
             sample["mask"] = mask
         if self.use_vg_event_repr:

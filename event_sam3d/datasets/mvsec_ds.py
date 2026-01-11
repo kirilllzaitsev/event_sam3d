@@ -127,7 +127,7 @@ class MVSECDataset(Dataset):
             "closest_event_id": closest_event_id,
             "start_event_id": start_event_id,
             "end_event_id": end_event_id,
-            "frame_id": frame_id,
+            "frame_name": f"{frame_id:06d}",
         }
         if self.use_masks:
             sam3_res_path = (

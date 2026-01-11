@@ -98,6 +98,7 @@ class RGBEDataset(Dataset):
             "rgb": image,
             "events": evimg,
             "rgb_path": image_path,
+            "frame_name": Path(image_path).stem,
         }
         if self.use_masks:
             sam3_res_path = f'{image_path.replace("rgb_image/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
