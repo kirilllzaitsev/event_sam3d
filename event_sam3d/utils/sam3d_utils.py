@@ -11,11 +11,12 @@ def save_sam3d_sparse_pred(save_path, output):
             if k
             in [
                 "6drotation_normalized",
+                "rotation",
                 "scale",
                 "shape",
                 "translation",
                 "translation_scale",
-                "voxel",
+                "ss",
             ]
         },
         save_path,
