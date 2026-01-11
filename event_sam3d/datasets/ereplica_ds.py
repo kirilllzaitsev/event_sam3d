@@ -51,11 +51,25 @@ class EventReplicaDataset:
             f"{self.input_folder}/original_images/*.png")
         self.event_paths = get_ordered_paths(
             f"{self.input_folder}/event/*.npz")
-        self.num_frames = len(self.rgb_paths)
         self.img_timestamps = np.loadtxt(
             f"{self.input_folder}/timestamps.txt")[:, 1]
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
+        if use_masks:
+            mask_paths = []
+            for p in self.rgb_paths:
+                mp = p.replace("original_images/", f"sam3/{obj_name}_").replace(".png", ".pt").replace(".jpg", ".pt")
+                if os.path.exists(mp):
+                    mask_paths.append(mp)
+            mask_frame_names = set(Path(p).stem.replace(f"{obj_name}_", "") for p in mask_paths)
+            target_idxs = [
+                idx for idx, p in enumerate(self.rgb_paths) if Path(p).stem in mask_frame_names
+            ]
+            self.rgb_paths = [self.rgb_paths[i] for i in target_idxs]
+            self.img_timestamps = self.img_timestamps[target_idxs]
+        self.num_frames = len(self.rgb_paths)
+        if len_limit is not None:
+            self.num_frames = min(self.num_frames, len_limit)
 
     def __len__(self):
         return self.num_frames
