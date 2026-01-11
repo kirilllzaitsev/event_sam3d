@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 
 from event_sam3d.config import RGBE_DIR
 from event_sam3d.utils.common_utils import cast_to_numpy
+from event_sam3d.utils.data_utils import load_sam3_res
 from event_sam3d.utils.io import load_color
 from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
 
@@ -83,7 +84,8 @@ class RGBEDataset(Dataset):
     def __repr__(self):
         return print_cls(
             self,
-            excluded_attrs=["rgb_paths", "data_dirs", "image_pixel_mean", "image_pixel_std", "evimg_pixel_mean", "evimg_pixel_std"],
+            excluded_attrs=["rgb_paths", "data_dirs", "image_pixel_mean",
+                            "image_pixel_std", "evimg_pixel_mean", "evimg_pixel_std"],
             extra_str=f"{len(self.rgb_paths)=} {self.rgb_paths[:5]=} {self.rgb_paths[-5:]=}\n{len(self.data_dirs)=} {self.data_dirs[:5]=} {self.data_dirs[-5:]=}",
         )
 
@@ -95,16 +97,12 @@ class RGBEDataset(Dataset):
         sample = {
             "rgb": image,
             "events": evimg,
-            "path": image_path,
+            "rgb_path": image_path,
         }
         if self.use_masks:
-            sam3_res = torch.load(
-                f'{image_path.replace("rgb_image/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}',
-                map_location="cpu",
-            )
-            masks = cast_to_numpy(sam3_res["masks"].squeeze(1))
-            largest_mask_idx = np.argmax([(np.sum(m)) for m in masks])
-            sample["mask"] = masks[largest_mask_idx]
+            sam3_res_path = f'{image_path.replace("rgb_image/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
+            mask = load_sam3_res(sam3_res_path)
+            sample["mask"] = mask
         if self.do_normalize:
             sample["rgb"] = (
                 sample["rgb"] - self.image_pixel_mean

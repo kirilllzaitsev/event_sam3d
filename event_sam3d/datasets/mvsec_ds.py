@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 from event_sam3d.config import MVSEC_DIR
 from event_sam3d.datasets.transforms import Transform
 from event_sam3d.utils.common_utils import cast_to_numpy, cast_to_torch
+from event_sam3d.utils.data_utils import load_sam3_res
 from event_sam3d.utils.event_utils import VoxelGrid
 from event_sam3d.utils.events_representations import Tencode
 from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
@@ -25,7 +26,6 @@ class MVSECDataset(Dataset):
         width=346,
         event_window_ms=50,
         transform=None,
-        mode="train",
         event_representation=None,
         nr_temporal_bins=5,
         use_masks=True,
@@ -40,12 +40,12 @@ class MVSECDataset(Dataset):
         self.root = root
         self.event_representation = event_representation
         self.nr_temporal_bins = nr_temporal_bins
-        self.mode = mode
         self.obj_name = obj_name
         self.height = height
         self.width = width
         self.len_limit = len_limit
         self.transform = transform
+        self.min_num_events = min_num_events
 
         self.use_masks = use_masks
         self.use_vg_event_repr = use_vg_event_repr
@@ -127,15 +127,14 @@ class MVSECDataset(Dataset):
             "closest_event_id": closest_event_id,
             "start_event_id": start_event_id,
             "end_event_id": end_event_id,
+            "frame_id": frame_id,
         }
         if self.use_masks:
-            sam3_res = torch.load(
-                f"{self.root}/{self.seq_name}/sam3/{self.obj_name}_{frame_id:06d}.pt",
-                map_location="cpu",
+            sam3_res_path = (
+                f"{self.root}/{self.seq_name}/sam3/{self.obj_name}_{frame_id:06d}.pt"
             )
-            masks = cast_to_numpy(sam3_res["masks"].squeeze(1))
-            largest_mask_idx = np.argmax([(np.sum(m)) for m in masks])
-            sample["mask"] = masks[largest_mask_idx]
+            mask = load_sam3_res(sam3_res_path)
+            sample["mask"] = mask
         if self.use_vg_event_repr:
             event_repr = self.vg.convert(
                 x=cast_to_torch(events[:, 0]),
@@ -144,7 +143,6 @@ class MVSECDataset(Dataset):
                 p=cast_to_torch(events[:, 3]),
             )
             event_repr = self.vg.to_rgb_mono(event_repr)
-            # sample["events_raw"] = events
             sample["events"] = event_repr
 
         if self.transform is not None:
