@@ -60,8 +60,9 @@ class Transform:
         self.probs = {n: 0.5 for n in names} if probs is None else probs
 
     def __call__(self, sample):
+        target_keys = ["rgb", "mask", "events", "rgb_clean"]
         if "hflip" in self.names and np.random.rand() < self.probs["hflip"]:
-            for k in ["rgb", "mask", "events"]:
+            for k in target_keys:
                 if k in sample:
                     sample[k] = horizontal_flip(sample[k])
         if "random_crop" in self.names and np.random.rand() < self.probs["random_crop"]:
@@ -84,15 +85,16 @@ class Transform:
                     interpolation=cv2.INTER_NEAREST,
                 ).astype(bool)
                 sample["mask"] = mask_crop
-                for k in ["rgb", "events"]:
-                    if k in sample:
+                for k in target_keys:
+                    if k in sample and k != "mask":
                         sample[k] = sample[k][y : y + n, x : x + n, :]
                         sample[k] = cv2.resize(
                             sample[k],
                             (w, h),
                             interpolation=cv2.INTER_LINEAR,
                         )
-        sample["rgb_clean"] = sample["rgb"].copy()
+        if "rgb_clean" not in sample:
+            sample["rgb_clean"] = sample["rgb"].copy()
         if "gblur" in self.names and np.random.rand() < self.probs["gblur"]:
             ksize = np.random.randint(self.blur_ksize_min, self.blur_ksize_max + 1)
             sample["rgb"] = gauss_blur(sample["rgb"], ksize=ksize)
