@@ -5,7 +5,12 @@ import numpy as np
 
 from event_sam3d.config import REPLICA_DIR
 from event_sam3d.utils.common_utils import cast_to_torch
-from event_sam3d.utils.data_utils import load_sam3_res
+from event_sam3d.utils.data_utils import (
+    get_sam3_path_from_rgb,
+    get_sam3d_path_from_rgb,
+    load_sam3_res,
+    load_sam3d_res,
+)
 from event_sam3d.utils.events_representations import Tencode
 from event_sam3d.utils.io import load_color
 from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
@@ -23,6 +28,7 @@ class EventReplicaDataset:
         event_representation=None,
         nr_temporal_bins=5,
         use_masks=True,
+        use_sam3d=False,
         use_vg_event_repr=False,
         obj_name="barrel",
         len_limit=None,
@@ -41,6 +47,7 @@ class EventReplicaDataset:
         self.min_num_events = min_num_events
 
         self.use_masks = use_masks
+        self.use_sam3d = use_sam3d
         self.use_vg_event_repr = use_vg_event_repr
         self.include_only_if_enough_events = include_only_if_enough_events
 
@@ -48,23 +55,28 @@ class EventReplicaDataset:
         self.half_event_window_us = (event_window_ms // 2) * 1e3
 
         self.input_folder = Path(self.root) / f"{self.seq_name}"
-        self.rgb_paths = get_ordered_paths(
-            f"{self.input_folder}/original_images/*.png")
-        self.event_paths = get_ordered_paths(
-            f"{self.input_folder}/event/*.npz")
-        self.img_timestamps = np.loadtxt(
-            f"{self.input_folder}/timestamps.txt")[:, 1]
+        self.rgb_paths = get_ordered_paths(f"{self.input_folder}/original_images/*.png")
+        self.event_paths = get_ordered_paths(f"{self.input_folder}/event/*.npz")
+        self.img_timestamps = np.loadtxt(f"{self.input_folder}/timestamps.txt")[:, 1]
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
         if use_masks:
             mask_paths = []
             for p in self.rgb_paths:
-                mp = p.replace("original_images/", f"sam3/{obj_name}_").replace(".png", ".pt").replace(".jpg", ".pt")
+                mp = (
+                    p.replace("original_images/", f"sam3/{obj_name}_")
+                    .replace(".png", ".pt")
+                    .replace(".jpg", ".pt")
+                )
                 if os.path.exists(mp):
                     mask_paths.append(mp)
-            mask_frame_names = set(Path(p).stem.replace(f"{obj_name}_", "") for p in mask_paths)
+            mask_frame_names = set(
+                Path(p).stem.replace(f"{obj_name}_", "") for p in mask_paths
+            )
             target_idxs = [
-                idx for idx, p in enumerate(self.rgb_paths) if Path(p).stem in mask_frame_names
+                idx
+                for idx, p in enumerate(self.rgb_paths)
+                if Path(p).stem in mask_frame_names
             ]
             self.rgb_paths = [self.rgb_paths[i] for i in target_idxs]
             self.img_timestamps = self.img_timestamps[target_idxs]
@@ -89,10 +101,12 @@ class EventReplicaDataset:
 
     def __getitem__(self, index):
         rgb_path = self.rgb_paths[index]
-        sharp_image_path = rgb_path.replace(
-            'original_images', 'sharp_images')
-        event_path = Path(
-            rgb_path).parents[1] / "event" / rgb_path.split('/')[-1].replace('.png', '.npz')
+        sharp_image_path = rgb_path.replace("original_images", "sharp_images")
+        event_path = (
+            Path(rgb_path).parents[1]
+            / "event"
+            / rgb_path.split("/")[-1].replace(".png", ".npz")
+        )
         rgb = load_color(rgb_path)
         rgb_clean = load_color(sharp_image_path)
         events = np.load(event_path, allow_pickle=True)
@@ -104,15 +118,19 @@ class EventReplicaDataset:
             "frame_name": Path(rgb_path).stem,
         }
         if self.use_masks:
-            sam3_res_path = f'{rgb_path.replace("original_images/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
+            sam3_res_path = get_sam3_path_from_rgb(rgb_path, self.obj_name)
             mask = load_sam3_res(sam3_res_path)
             sample["mask"] = mask
+        if self.use_sam3d:
+            sam3d_res_path = get_sam3d_path_from_rgb(rgb_path, self.obj_name)
+            sam3d_res = load_sam3d_res(sam3d_res_path)
+            sample["t"] = sam3d_res
         if self.use_vg_event_repr:
             event_repr = self.vg.convert(
-                x=cast_to_torch(events['x']),
-                y=cast_to_torch(events['y']),
-                t=cast_to_torch(events['t']),
-                p=cast_to_torch(events['p']),
+                x=cast_to_torch(events["x"]),
+                y=cast_to_torch(events["y"]),
+                t=cast_to_torch(events["t"]),
+                p=cast_to_torch(events["p"]),
             )
             event_repr = self.vg.to_rgb_mono(event_repr)
             sample["events"] = event_repr
