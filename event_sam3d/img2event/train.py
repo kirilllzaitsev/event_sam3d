@@ -15,7 +15,8 @@ from torch.utils.data import DataLoader, DistributedSampler, Subset
 from tqdm import tqdm
 
 import wandb
-from event_sam3d.config import IS_CLUSTER, MVSEC_SCENES, PROJ_DIR, RELATED_DIR
+from event_sam3d.config import IS_CLUSTER, MVSEC_SCENES, PROJ_DIR, RELATED_DIR, REPLICA_SCENES
+from event_sam3d.datasets.ereplica_ds import EventReplicaDataset
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
 from event_sam3d.datasets.rgbe_ds import RGBEDataset
@@ -102,6 +103,12 @@ def build_datasets(cfg):
         if obj_names is None:
             obj_names = ["barrel"]
         train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
+    elif cfg.ds_name == "ereplica":
+        if val_ds_names is None:
+            val_ds_names = ["room2"]
+        if obj_names is None:
+            obj_names = ["chair"]
+        train_ds_names = [s for s in REPLICA_SCENES if s not in val_ds_names]
     else:
         train_ds_names = ["train"]
         if val_ds_names is None:
@@ -117,7 +124,13 @@ def build_datasets(cfg):
         len_limit = None
     train_datasets = {}
     val_datasets = {}
-    ds_cls = MVSECDataset if cfg.ds_name == "mvsec" else RGBEDataset
+
+    if cfg.ds_name == "mvsec":
+        ds_cls = MVSECDataset
+    elif cfg.ds_name == "ereplica":
+        ds_cls = EventReplicaDataset
+    else:
+        ds_cls = RGBEDataset
 
     if cfg.transform_names is None:
         transform = None
@@ -134,9 +147,10 @@ def build_datasets(cfg):
             min_num_events=cfg.min_num_events,
         )
         for filename in train_ds_names:
-            if cfg.ds_name == "mvsec":
+            if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
                     seq_name=filename,
+                    use_sam3d=True,
                 )
             else:
                 other_kwargs = dict(split="train")
@@ -147,9 +161,10 @@ def build_datasets(cfg):
             )
             train_datasets[f"{filename}_{obj_name}"] = dataset
         for filename in val_ds_names:
-            if cfg.ds_name == "mvsec":
+            if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
                     seq_name=filename,
+                    use_sam3d=True,
                 )
             else:
                 other_kwargs = dict(split="test-normal", test_subsplit=filename)
@@ -185,11 +200,8 @@ def build_optimizer(model, cfg, use_scheduler=False):
         else:
             params_others.append(param)
     optimizer = torch.optim.AdamW(
-        [
-            {"params": params_others, "lr": cfg.lr},
-            {"params": params_fuser, "lr": cfg.lr * 5},
-            {"params": params_patch_embed, "lr": cfg.lr * 2},
-        ],
+        model.parameters(),
+        lr=cfg.lr,
         weight_decay=cfg.weight_decay,
     )
     if use_scheduler:
