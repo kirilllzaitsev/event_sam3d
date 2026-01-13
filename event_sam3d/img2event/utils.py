@@ -13,6 +13,28 @@ from event_sam3d.utils.common_utils import cast_to_numpy
 from event_sam3d.utils.misc_utils import is_empty
 
 
+def get_vg_occupancy_mask(gt):
+    return gt[..., 0] > 0.0
+
+
+def compute_sparse_sam3d_loss(out_s, out_t):
+    res = {}
+
+    for k in ["6drotation_normalized", "scale", "translation"]:
+        pred = out_s[k]
+        gt = out_t[k]
+        res[f"loss_{k}"] = F.mse_loss(pred, gt)
+
+    pred_vg = out_s["ss"]
+    gt_vg = out_t["ss"]
+    gt_occupancy = get_vg_occupancy_mask(gt_vg)
+    pred_occupancy = get_vg_occupancy_mask(pred_vg)
+    centroid_mask = gt_occupancy & pred_occupancy
+    loss_mae = torch.abs(pred_vg - gt_vg)[centroid_mask].mean()
+    res["loss_mae"] = loss_mae
+    return res
+
+
 def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
     # embeds=scales x layers
     losses = defaultdict(lambda: defaultdict(list))
@@ -48,16 +70,16 @@ def compute_embed_loss(s_embeds, t_embeds, use_attn=False):
     return {"total_loss": total_loss, "losses": losses, "count": count}
 
 
-def load_st_models(args, block_idxs, device="cpu", rank=0, is_train=True, use_only_encoder=True):
+def load_st_models(
+    args, block_idxs, device="cpu", rank=0, is_train=True, use_only_encoder=True
+):
     cur_plt_backend = plt.get_backend()
     sys.path.append(f"{RELATED_DIR}/rec/sam-3d-objects/notebook")
 
     from inference import Inference
 
     tag = "hf"
-    config_base_path = (
-        f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}"
-    )
+    config_base_path = f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}"
     config_path = f"{config_base_path}/{'pipeline_encoder.yaml' if use_only_encoder else 'pipeline.yaml'}"
     t_model = Inference(
         config_path, compile=False, device=device, use_ckpt=not args.do_debug
@@ -85,54 +107,72 @@ def load_st_models(args, block_idxs, device="cpu", rank=0, is_train=True, use_on
     if not is_train:
         s_model.eval()
 
-    for p in [t_model, s_model]:
-        p.condition_embedders.ss_condition_embedder.embedder_list = [
-            x
-            for i, x in enumerate(
-                p.condition_embedders.ss_condition_embedder.embedder_list
-            )
-            if i in [0, 3]
-        ]
-        p.condition_embedders.ss_condition_embedder.module_list = torch.nn.ModuleList(
-            [
-                x
-                for i, x in enumerate(
-                    p.condition_embedders.ss_condition_embedder.module_list
-                )
-                if i in [0, 3]
-            ]
-        )
-        p.condition_embedders.ss_condition_embedder.projection_nets = (
-            torch.nn.ModuleList(
-                [
-                    x
-                    for i, x in enumerate(
-                        p.condition_embedders.ss_condition_embedder.projection_nets
-                    )
-                    if i in [0, 3]
-                ]
-            )
-        )
-
     # event module is the last in ss_generator.yaml
     event_module_idx = (
         len(s_model.condition_embedders.ss_condition_embedder.module_list) - 1
     )
-    trainable_param_names = []
-    for n, p in s_model.named_parameters():
-        if is_train and (
-            f"module_list.{event_module_idx}" in n
-            and (
-                "patch_embed" in n
-                or (
-                    any(f"blocks.{i}." in n for i in block_idxs)
-                    and any(x in n for x in [".mlp"])
+    assert event_module_idx == 3, event_module_idx
+
+    if args.use_sam3d:
+        trainable_param_names = []
+        for n, p in s_model.named_parameters():
+            if is_train and (
+                f"module_list.{event_module_idx}" in n
+                and (
+                    "patch_embed" in n
+                    or (
+                        any(f"blocks.{i}." in n for i in block_idxs)
+                        and any(x in n for x in [".mlp"])
+                    )
+                )
+                or "rgbe_fuser" in n
+            ):
+                p.requires_grad = True
+                trainable_param_names.append(n)
+    else:
+        for p in [t_model, s_model]:
+            p.condition_embedders.ss_condition_embedder.embedder_list = [
+                x
+                for i, x in enumerate(
+                    p.condition_embedders.ss_condition_embedder.embedder_list
+                )
+                if i in [0, 3]
+            ]
+            p.condition_embedders.ss_condition_embedder.module_list = torch.nn.ModuleList(
+                [
+                    x
+                    for i, x in enumerate(
+                        p.condition_embedders.ss_condition_embedder.module_list
+                    )
+                    if i in [0, 3]
+                ]
+            )
+            p.condition_embedders.ss_condition_embedder.projection_nets = (
+                torch.nn.ModuleList(
+                    [
+                        x
+                        for i, x in enumerate(
+                            p.condition_embedders.ss_condition_embedder.projection_nets
+                        )
+                        if i in [0, 3]
+                    ]
                 )
             )
-            or "rgbe_fuser" in n
-        ):
-            p.requires_grad = True
-            trainable_param_names.append(n)
+        trainable_param_names = []
+        for n, p in s_model.named_parameters():
+            if is_train and (
+                f"module_list.{event_module_idx}" in n
+                and (
+                    "patch_embed" in n
+                    or (
+                        any(f"blocks.{i}." in n for i in block_idxs)
+                        and any(x in n for x in [".mlp"])
+                    )
+                )
+                or "rgbe_fuser" in n
+            ):
+                p.requires_grad = True
+                trainable_param_names.append(n)
     if rank == 0:
         print(f"\n{trainable_param_names=}\n")
         print(
