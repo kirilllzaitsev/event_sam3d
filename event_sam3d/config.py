@@ -9,6 +9,7 @@ IS_CLUSTER = os.path.exists("/cluster")
 IS_LOCAL = not IS_CLUSTER
 PROJ_DIR = Path(__file__).resolve().parents[1]
 WORKSPACE_DIR = PROJ_DIR if IS_CLUSTER else PROJ_DIR.parent
+CKPT_DIR = WORKSPACE_DIR / "checkpoints"
 
 DATA_DIR = (
     Path(os.environ["DATA_DIR"]) if "DATA_DIR" in os.environ else WORKSPACE_DIR / "data"
