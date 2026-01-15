@@ -13,10 +13,6 @@ from event_sam3d.utils.common_utils import cast_to_numpy
 from event_sam3d.utils.misc_utils import is_empty
 
 
-def get_vg_occupancy_mask(gt):
-    return gt[..., 0] > 0.0
-
-
 def compute_sparse_sam3d_loss(out_s, out_t):
     res = {}
 
@@ -27,11 +23,14 @@ def compute_sparse_sam3d_loss(out_s, out_t):
 
     pred_vg = out_s["ss"]
     gt_vg = out_t["ss"]
-    gt_occupancy = get_vg_occupancy_mask(gt_vg)
-    pred_occupancy = get_vg_occupancy_mask(pred_vg)
-    centroid_mask = gt_occupancy & pred_occupancy
-    loss_mae = torch.abs(pred_vg - gt_vg)[centroid_mask].mean()
-    res["loss_mae"] = loss_mae
+    bce = F.binary_cross_entropy_with_logits(
+        pred_vg, (gt_vg > 0).float(), reduction="none"
+    )
+    pt = torch.exp(-bce)
+    alpha = 0.25
+    gamma = 2.0
+    focal_loss = (alpha * (1 - pt) ** gamma * bce).mean()
+    res["loss_ss"] = focal_loss
     return res
 
 
