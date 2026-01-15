@@ -27,7 +27,7 @@ def load_sam3d_res(sam3d_res_path):
         sam3d_res_path
     ), f"sam3d res path does not exist: {sam3d_res_path}"
     sam3d_res = torch.load(sam3d_res_path, map_location="cpu")
-    res = {k: v.squeeze() for k, v in sam3d_res.items()}
+    res = {k: v.squeeze(0) for k, v in sam3d_res.items()}
     return res
 
 
