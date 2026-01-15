@@ -76,6 +76,30 @@ class TeacherStudent(nn.Module):
         return res
 
 
+class TeacherStudentReconstruction(nn.Module):
+    def __init__(
+        self,
+        s,
+    ):
+        super().__init__()
+        self.s = s
+
+    def forward(self, s_kwargs, t_kwargs=None, **kwargs):
+        s_pred = self.s(**s_kwargs, **kwargs)
+        res = {"s_pred": s_pred}
+        if t_kwargs is not None:
+            res.update(
+                {
+                    "t_pred": {
+                        k: v
+                        for k, v in t_kwargs.items()
+                        if k in ["6drotation_normalized", "scale", "translation", "ss"]
+                    }
+                }
+            )
+        return res
+
+
 def dict_fn(output, k, input=None):
     return output[k]
 
