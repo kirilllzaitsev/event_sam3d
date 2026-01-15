@@ -15,18 +15,25 @@ from torch.utils.data import DataLoader, DistributedSampler, Subset
 from tqdm import tqdm
 
 import wandb
-from event_sam3d.config import IS_CLUSTER, MVSEC_SCENES, PROJ_DIR, RELATED_DIR, REPLICA_SCENES
+from event_sam3d.config import (
+    IS_CLUSTER,
+    MVSEC_SCENES,
+    PROJ_DIR,
+    RELATED_DIR,
+    REPLICA_SCENES,
+)
 from event_sam3d.datasets.ereplica_ds import EventReplicaDataset
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
 from event_sam3d.datasets.rgbe_ds import RGBEDataset
 from event_sam3d.datasets.transforms import Transform
-from event_sam3d.img2event.model import TeacherStudent
+from event_sam3d.img2event.model import TeacherStudent, TeacherStudentReconstruction
 from event_sam3d.img2event.model_utils import get_condition_embedder
 from event_sam3d.img2event.utils import (
     EarlyStopping,
     cleanup_distributed,
     compute_embed_loss,
+    compute_sparse_sam3d_loss,
     init_distributed,
     is_main_process,
     load_st_models,
@@ -83,10 +90,18 @@ def build_model(
         use_only_encoder=use_only_encoder,
     )
     forward_args = None
-    ts_model = TeacherStudent(
+    if cfg.use_sam3d:
+        mcls = TeacherStudentReconstruction
+        kwargs = dict()
+    else:
+        mcls = TeacherStudent
+        kwargs = dict(
+            block_idxs=block_idxs,
+            t=t_model,
+        )
+    ts_model = mcls(
         s=s_model,
-        t=t_model,
-        block_idxs=block_idxs,
+        **kwargs,
     )
     return {"model": ts_model, "forward_args": forward_args}
 
@@ -95,29 +110,30 @@ def build_datasets(cfg):
     """
     Return train_dataset, val_dataset.
     """
-    val_ds_names = cfg.val_ds_names
     obj_names = cfg.obj_names
     if cfg.ds_name == "mvsec":
-        if val_ds_names is None:
-            val_ds_names = ["indoor_flying4_data"]
+        val_ds_names = ["indoor_flying4_data"]
         if obj_names is None:
             obj_names = ["barrel"]
         train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
     elif cfg.ds_name == "ereplica":
-        if val_ds_names is None:
-            val_ds_names = ["room2"]
+        val_ds_names = ["room2"]
         if obj_names is None:
             obj_names = ["chair"]
         train_ds_names = [s for s in REPLICA_SCENES if s not in val_ds_names]
     else:
         train_ds_names = ["train"]
-        if val_ds_names is None:
-            val_ds_names = ["easy", "medium", "hard"]
+        val_ds_names = ["easy", "medium", "hard"]
         if obj_names is None:
             obj_names = ["person"]
+    if cfg.train_ds_names is not None:
+        train_ds_names = cfg.train_ds_names
+    if cfg.val_ds_names is not None:
+        val_ds_names = cfg.val_ds_names
     if cfg.do_overfit:
         train_ds_names = train_ds_names[:1]
         val_ds_names = train_ds_names[:1]
+        print(train_ds_names)
         obj_names = obj_names[:1]
         len_limit = cfg.overfit_n_samples
     else:
@@ -159,7 +175,8 @@ def build_datasets(cfg):
                 **other_kwargs,
                 **common_kwargs,
             )
-            train_datasets[f"{filename}_{obj_name}"] = dataset
+            if len(dataset) > 0:
+                train_datasets[f"{filename}_{obj_name}"] = dataset
         for filename in val_ds_names:
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
@@ -173,7 +190,10 @@ def build_datasets(cfg):
                 **other_kwargs,
                 **common_kwargs,
             )
-            val_datasets[f"{filename}_{obj_name}"] = dataset
+            if len(dataset) > 0:
+                val_datasets[f"{filename}_{obj_name}"] = dataset
+    if len(train_datasets) == 0 or len(val_datasets) == 0:
+        raise RuntimeError(f"{len(train_datasets)=} {len(val_datasets)=}")
     train_ds = IEDataset(datasets=train_datasets)
     val_ds = IEDataset(datasets=val_datasets)
     if cfg.do_debug:
@@ -234,12 +254,15 @@ class Trainer:
             seed=42,
             event_image=batch["events"],
         )
-        t_kwargs = dict(
-            image=batch.get("rgb_clean", batch["rgb"]),
-            mask=batch["mask"],
-            seed=42,
-            event_image=None,
-        )
+        if self.cfg.use_sam3d:
+            t_kwargs = batch
+        else:
+            t_kwargs = dict(
+                image=batch.get("rgb_clean", batch["rgb"]),
+                mask=batch["mask"],
+                seed=42,
+                event_image=None,
+            )
         results_dict = self.model(s_kwargs=s_kwargs, t_kwargs=t_kwargs)
         results_dict["meta"] = {}
 
@@ -328,19 +351,28 @@ class Trainer:
         return avg_loss.item()
 
     def calc_losses(self, outputs):
-        embed_losses = compute_embed_loss(
-            outputs["s_feats"],
-            outputs["t_feats"],
-            use_attn="lattn" in self.cfg.exp_name,
-        )
-        losses = {"embed_losses": embed_losses["losses"]}
-        total_loss = embed_losses["total_loss"]
-        if "loss-rec" in self.cfg.exp_name:
-            rec_loss = F.l1_loss(
-                outputs["s_pred"]["flow_preds"][-1], outputs["t_pred"]["flow_preds"][-1]
+        if self.cfg.use_sam3d:
+            losses = compute_sparse_sam3d_loss(outputs["s_pred"], outputs["t_pred"])
+            loss_weights = {f"loss_{k}": 1.0 for k in ["scale", "translation"]}
+            loss_weights["6drotation_normalized"] = 0.05
+            loss_weights["ss"] = 0.2
+            total_loss = sum(losses[k] * w for k, w in loss_weights.items())
+            losses["loss"] = total_loss
+        else:
+            embed_losses = compute_embed_loss(
+                outputs["s_feats"],
+                outputs["t_feats"],
+                use_attn="lattn" in self.cfg.exp_name,
             )
-            total_loss += rec_loss
-            losses["rec_loss"] = rec_loss.item()
+            losses = {"embed_losses": embed_losses["losses"]}
+            total_loss = embed_losses["total_loss"]
+            if "loss-rec" in self.cfg.exp_name:
+                rec_loss = F.l1_loss(
+                    outputs["s_pred"]["flow_preds"][-1],
+                    outputs["t_pred"]["flow_preds"][-1],
+                )
+                total_loss += rec_loss
+                losses["rec_loss"] = rec_loss.item()
         losses["loss"] = total_loss
         return losses
 
@@ -532,7 +564,9 @@ def main(cfg):
         build_model_res["forward_args"],
     )
     model_noddp = model.module if isinstance(model, DDP) else model
-    optimizer, scheduler = build_optimizer(model_noddp, cfg, use_scheduler=cfg.use_scheduler)
+    optimizer, scheduler = build_optimizer(
+        model_noddp, cfg, use_scheduler=cfg.use_scheduler
+    )
     scaler = torch.amp.GradScaler("cuda", enabled=cfg.use_amp)
 
     # Optionally resume_path
@@ -675,6 +709,7 @@ def get_arg_parser():
     train_args.add_argument("--weight_decay", type=float, default=0.0)
     train_args.add_argument("--use_amp", action="store_true")
     train_args.add_argument("--use_scheduler", action="store_true")
+    train_args.add_argument("--use_sam3d", action="store_true")
     train_args.add_argument("--grad_clip", type=float, default=1.0)
     train_args.add_argument("--es_patience_epochs", type=int, default=20)
     train_args.add_argument("--es_delta", type=float, default=0.0)
@@ -686,12 +721,15 @@ def get_arg_parser():
 
     data_args = p.add_argument_group("data")
     data_args.add_argument("--val_ds_names", nargs="*")
+    data_args.add_argument("--train_ds_names", nargs="*")
     data_args.add_argument("--event_window_ms", type=int, default=50)
     data_args.add_argument("--obj_names", nargs="*")
     data_args.add_argument("--transform_names", nargs="*")
     data_args.add_argument("--include_only_if_enough_events", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
-    data_args.add_argument("--ds_name", default="mvsec", choices=["mvsec", "rgbe"])
+    data_args.add_argument(
+        "--ds_name", default="mvsec", choices=["mvsec", "rgbe", "ereplica"]
+    )
 
     pipe_args = p.add_argument_group("pipeline")
     pipe_args.add_argument("--log_step_freq", type=int, default=20)
