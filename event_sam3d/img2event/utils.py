@@ -79,10 +79,16 @@ def load_st_models(
 
     tag = "hf"
     config_base_path = f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}"
-    config_path = f"{config_base_path}/{'pipeline_encoder.yaml' if use_only_encoder else 'pipeline.yaml'}"
-    t_model = Inference(
-        config_path, compile=False, device=device, use_ckpt=not args.do_debug
-    )._pipeline
+    if use_only_encoder and not args.use_sam3d:
+        config_path = f"{config_base_path}/pipeline_encoder.yaml"
+    else:
+        config_path = f"{config_base_path}/pipeline.yaml"
+    if args.use_sam3d:
+        t_model = torch.nn.Identity()
+    else:
+        t_model = Inference(
+            config_path, compile=False, device=device, use_ckpt=not args.do_debug
+        )._pipeline
     ckpt_params = {}
     if args.resume_dir is not None:
         ckpt_params = dict(
@@ -96,6 +102,7 @@ def load_st_models(
         device=device,
         use_ckpt=not args.do_debug,
         rgbe_fusion_type=args.rgbe_fusion_type,
+        use_only_sparse=args.use_sam3d,
         **ckpt_params,
     )._pipeline
 
@@ -137,14 +144,16 @@ def load_st_models(
                 )
                 if i in [0, 3]
             ]
-            p.condition_embedders.ss_condition_embedder.module_list = torch.nn.ModuleList(
-                [
-                    x
-                    for i, x in enumerate(
-                        p.condition_embedders.ss_condition_embedder.module_list
-                    )
-                    if i in [0, 3]
-                ]
+            p.condition_embedders.ss_condition_embedder.module_list = (
+                torch.nn.ModuleList(
+                    [
+                        x
+                        for i, x in enumerate(
+                            p.condition_embedders.ss_condition_embedder.module_list
+                        )
+                        if i in [0, 3]
+                    ]
+                )
             )
             p.condition_embedders.ss_condition_embedder.projection_nets = (
                 torch.nn.ModuleList(
