@@ -166,7 +166,7 @@ def build_datasets(cfg):
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
                     seq_name=filename,
-                    use_sam3d=True,
+                    use_sam3d=cfg.use_sam3d,
                 )
             else:
                 other_kwargs = dict(split="train")
@@ -181,7 +181,7 @@ def build_datasets(cfg):
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
                     seq_name=filename,
-                    use_sam3d=True,
+                    use_sam3d=cfg.use_sam3d,
                 )
             else:
                 other_kwargs = dict(split="test-normal", test_subsplit=filename)

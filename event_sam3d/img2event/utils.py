@@ -166,6 +166,7 @@ def load_st_models(
                     ]
                 )
             )
+        event_module_idx = 1
         trainable_param_names = []
         for n, p in s_model.named_parameters():
             if is_train and (
