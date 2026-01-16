@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from event_sam3d.config import MVSEC_DIR
 from event_sam3d.datasets.transforms import Transform
 from event_sam3d.utils.common_utils import cast_to_numpy, cast_to_torch
-from event_sam3d.utils.data_utils import load_sam3_res
+from event_sam3d.utils.data_utils import get_sam3d_path_from_rgb, load_sam3_res, load_sam3d_res
 from event_sam3d.utils.event_utils import VoxelGrid
 from event_sam3d.utils.events_representations import Tencode
 from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
@@ -33,6 +33,7 @@ class MVSECDataset(Dataset):
         obj_name="barrel",
         len_limit=None,
         include_only_if_enough_events=False,
+        use_sam3d=False,
         min_num_events=500,
     ):
         """ """
@@ -49,6 +50,7 @@ class MVSECDataset(Dataset):
 
         self.use_masks = use_masks
         self.use_vg_event_repr = use_vg_event_repr
+        self.use_sam3d = use_sam3d
         self.include_only_if_enough_events = include_only_if_enough_events
 
         self.hw = (height, width)
@@ -135,6 +137,12 @@ class MVSECDataset(Dataset):
             )
             mask = load_sam3_res(sam3_res_path)
             sample["mask"] = mask
+        if self.use_sam3d:
+            sam3d_res_path = (
+                f"{self.root}/{self.seq_name}/sam3d_sparse/{self.obj_name}_{frame_id:06d}.pt"
+            )
+            sam3d_res = load_sam3d_res(sam3d_res_path)
+            sample["t"] = sam3d_res
         if self.use_vg_event_repr:
             event_repr = self.vg.convert(
                 x=cast_to_torch(events[:, 0]),
