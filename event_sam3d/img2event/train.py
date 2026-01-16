@@ -80,7 +80,7 @@ def build_model(
     Return a regular (non-DDP) model.
     """
     if block_idxs is None:
-        block_idxs = [2] if cfg.do_debug else [2, 5, 9, 14, 19, 22]
+        block_idxs = [2] if cfg.do_debug else cfg.block_idxs
     s_model, t_model = load_st_models(
         cfg,
         block_idxs=block_idxs,
@@ -718,6 +718,7 @@ def get_arg_parser():
     model_args.add_argument(
         "--rgbe_fusion_type", default="gated", choices=["gated", "attn", "cattn"]
     )
+    model_args.add_argument("--block_idxs", default=[2, 5, 9, 14, 19, 22], nargs="*")
 
     data_args = p.add_argument_group("data")
     data_args.add_argument("--val_ds_names", nargs="*")
