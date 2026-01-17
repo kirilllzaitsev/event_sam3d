@@ -123,15 +123,7 @@ def load_st_models(
         trainable_param_names = []
         for n, p in s_model.named_parameters():
             if is_train and (
-                f"module_list.{event_module_idx}" in n
-                and (
-                    "patch_embed" in n
-                    or (
-                        any(f"blocks.{i}." in n for i in block_idxs)
-                        and any(x in n for x in [".mlp"])
-                    )
-                )
-                or "rgbe_fuser" in n
+                "rgbe_fuser" in n
             ):
                 p.requires_grad = True
                 trainable_param_names.append(n)
@@ -178,7 +170,6 @@ def load_st_models(
                         and any(x in n for x in [".mlp"])
                     )
                 )
-                or "rgbe_fuser" in n
             ):
                 p.requires_grad = True
                 trainable_param_names.append(n)
