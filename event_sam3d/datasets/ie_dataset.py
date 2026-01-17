@@ -47,6 +47,9 @@ class IEDataset(torch.utils.data.Dataset):
                 p=cast_to_torch(sample["events"][:, 3]),
             )
             sample["events"] = event_repr
-        sample["mask"] = (sample["mask"] * 255).astype(np.uint8)
+        if "mask" in sample:
+            sample["mask"] = (sample["mask"] * 255).astype(np.uint8)
+        else:
+            sample["mask"] = np.ones((self.hw[0], self.hw[1]), dtype=np.uint8) * 255
 
         return sample
