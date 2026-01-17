@@ -156,11 +156,11 @@ def build_datasets(cfg):
     for obj_name in obj_names:
         common_kwargs = dict(
             obj_name=obj_name,
-            use_masks=True,
+            use_masks=cfg.use_ds_masks,
             use_vg_event_repr=True,
             len_limit=len_limit,
-            include_only_if_enough_events=cfg.include_only_if_enough_events,
-            min_num_events=cfg.min_num_events,
+            include_only_if_enough_events=True,
+            min_num_events=1500,
         )
         for filename in train_ds_names:
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
@@ -395,9 +395,7 @@ class Trainer:
                 if k in ["loss", "rec_loss"]:
                     running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
 
-        avg_running_losses = reduce_dict(
-            {k: v / len(val_loader) for k, v in running_losses.items()}
-        )
+        avg_running_losses = {k: v / len(val_loader) for k, v in running_losses.items()}
 
         if is_main_process(rank):
             wandb.log(
@@ -727,6 +725,7 @@ def get_arg_parser():
     data_args.add_argument("--obj_names", nargs="*")
     data_args.add_argument("--transform_names", nargs="*")
     data_args.add_argument("--include_only_if_enough_events", action="store_true")
+    data_args.add_argument("--use_ds_masks", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
     data_args.add_argument(
         "--ds_name", default="mvsec", choices=["mvsec", "rgbe", "ereplica"]
@@ -767,7 +766,8 @@ if __name__ == "__main__":
         )
     if cfg.include_only_if_enough_events:
         cfg.exp_name += f"_min-events-{cfg.min_num_events}"
-    cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
+    if cfg.use_sam3d:
+        cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
     cfg.exp_name += f"_ds-{cfg.ds_name}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     exp_name = cfg.exp_name + f"_{current_datetime}"
