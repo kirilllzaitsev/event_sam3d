@@ -34,6 +34,7 @@ class EventReplicaDataset:
         len_limit=None,
         include_only_if_enough_events=False,
         min_num_events=500,
+        use_blurry_rgb=False,
     ):
         self.seq_name = seq_name
         self.root = root
@@ -50,6 +51,7 @@ class EventReplicaDataset:
         self.use_sam3d = use_sam3d
         self.use_vg_event_repr = use_vg_event_repr
         self.include_only_if_enough_events = include_only_if_enough_events
+        self.use_blurry_rgb = use_blurry_rgb
 
         self.hw = (height, width)
         self.half_event_window_us = (event_window_ms // 2) * 1e3
@@ -111,7 +113,7 @@ class EventReplicaDataset:
         rgb_clean = load_color(sharp_image_path)
         events = np.load(event_path, allow_pickle=True)
         sample = {
-            "rgb": rgb,
+            "rgb": rgb if self.use_blurry_rgb else rgb_clean,
             "rgb_clean": rgb_clean,
             "events": events,
             "rgb_path": rgb_path,
