@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 from collections import defaultdict
@@ -168,6 +169,12 @@ def build_datasets(cfg):
                     seq_name=filename,
                     use_sam3d=cfg.use_sam3d,
                 )
+                if cfg.ds_name == "ereplica":
+                    other_kwargs.update(
+                        dict(
+                            use_blurry_rgb=cfg.use_blurry_rgb,
+                        )
+                    )
             else:
                 other_kwargs = dict(split="train")
             dataset = ds_cls(
@@ -184,7 +191,10 @@ def build_datasets(cfg):
                     use_sam3d=cfg.use_sam3d,
                 )
             else:
-                other_kwargs = dict(split="test-normal", test_subsplit=filename)
+                if cfg.do_overfit:
+                    other_kwargs = dict(split="train")
+                else:
+                    other_kwargs = dict(split="test-normal", test_subsplit=filename)
             dataset = ds_cls(
                 transform=transform,
                 **other_kwargs,
@@ -253,9 +263,10 @@ class Trainer:
             mask=batch["mask"],
             seed=42,
             event_image=batch["events"],
+            stage1_inference_steps=1,
         )
         if self.cfg.use_sam3d:
-            t_kwargs = batch
+            t_kwargs = batch["t"]
         else:
             t_kwargs = dict(
                 image=batch.get("rgb_clean", batch["rgb"]),
@@ -282,7 +293,7 @@ class Trainer:
     ):
         self.model.train()
 
-        running_loss = 0.0
+        running_losses = defaultdict(float)
         num_batches = 0
 
         for step, batch in enumerate(
@@ -319,45 +330,51 @@ class Trainer:
             scaler.step(optimizer)
             scaler.update()
 
-            # Log / stats
-            running_loss += loss.detach()
+            for k, v in losses.items():
+                running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
             num_batches += 1
 
             if (step + 1) % cfg.log_step_freq == 0 and is_main_process(rank):
-                avg_loss = running_loss / num_batches
+                avg_loss = running_losses["loss"] / num_batches
                 # current_lr = optimizer.param_groups[0]["lr"]
                 wandb.log(
                     {
-                        "train/loss_step": avg_loss.item(),
+                        "train/loss_step": avg_loss,
                         "step": epoch * len(train_loader) + step,
                     },
                 )
 
-        self.model_wo_ddp.s_embeds.clear()
-        self.model_wo_ddp.t_embeds.clear()
+        if not self.cfg.use_sam3d:
+            self.model_wo_ddp.s_embeds.clear()
+            self.model_wo_ddp.t_embeds.clear()
 
-        # Average loss across processes
-        avg_loss = running_loss / max(len(train_loader), 1)
-        avg_loss = reduce_tensor(avg_loss, world_size)
+        avg_running_losses = reduce_dict(
+            {k: v / len(train_loader) for k, v in running_losses.items()}
+        )
 
         if is_main_process(rank):
             wandb.log(
                 {
-                    "train/loss_epoch": avg_loss.item(),
+                    **{f"train/{k}_epoch": v for k, v in avg_running_losses.items()},
                     "epoch": epoch,
-                },
+                }
             )
 
-        return avg_loss.item()
+        return avg_running_losses
 
     def calc_losses(self, outputs):
         if self.cfg.use_sam3d:
-            losses = compute_sparse_sam3d_loss(outputs["s_pred"], outputs["t_pred"])
-            loss_weights = {f"loss_{k}": 1.0 for k in ["scale", "translation"]}
+            losses_raw = compute_sparse_sam3d_loss(outputs["s_pred"], outputs["t_pred"])
+            loss_weights = {}
             loss_weights["6drotation_normalized"] = 0.05
+            loss_weights["scale"] = 0.02
+            loss_weights["translation"] = 0.1
             loss_weights["ss"] = 0.2
-            total_loss = sum(losses[k] * w for k, w in loss_weights.items())
-            losses["loss"] = total_loss
+            losses = {
+                f"loss_{k}": v * losses_raw[f"loss_{k}"]
+                for k, v in loss_weights.items()
+            }
+            total_loss = sum(losses.values())
         else:
             embed_losses = compute_embed_loss(
                 outputs["s_feats"],
@@ -392,8 +409,7 @@ class Trainer:
                 losses = self.calc_losses(outputs)
 
             for k, v in losses.items():
-                if k in ["loss", "rec_loss"]:
-                    running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
+                running_losses[k] += v.item() if isinstance(v, torch.Tensor) else v
 
         avg_running_losses = {k: v / len(val_loader) for k, v in running_losses.items()}
 
@@ -444,15 +460,14 @@ class Trainer:
                     forward_kwargs=forward_args,
                 )
                 losses = self.calc_losses(outputs)
-                loss = losses["loss"]
 
             wandb.log(
                 {
-                    f"bench_{alias}/loss_epoch": loss.item(),
+                    **{f"bench_{alias}/{k}_epoch": v for k, v in losses.items()},
                     f"epoch": epoch,
                 }
             )
-            res[f"{alias}_loss"] = loss.item()
+            res[f"{alias}_loss"] = losses["loss"].item()
 
         return res
 
@@ -576,7 +591,6 @@ def main(cfg):
         state = torch.load(f"{cfg.resume_dir}/state.pt", map_location="cpu")
         start_epoch = state["epoch"] + 1
         end_epoch = start_epoch + cfg.epochs
-        best_val_loss = state["best_val_loss"]
 
     if world_size > 1:
         model = DDP(
@@ -596,7 +610,7 @@ def main(cfg):
         range(start_epoch, end_epoch), disable=not is_main_process(rank), desc="Epochs"
     )
     for epoch in pbar:
-        train_loss = trainer.train_one_epoch(
+        train_losses = trainer.train_one_epoch(
             train_loader=train_loader,
             optimizer=optimizer,
             scaler=scaler,
@@ -611,7 +625,7 @@ def main(cfg):
         if scheduler is not None:
             scheduler.step()
 
-        desc = f"{epoch=}. Train Loss: {train_loss:.4f}"
+        desc = f"{epoch=}. Train Loss: {train_losses['loss']:.4f}"
         if not cfg.do_overfit and (
             epoch % cfg.val_epoch_freq == 0 or (epoch == end_epoch - 1)
         ):
@@ -726,6 +740,7 @@ def get_arg_parser():
     data_args.add_argument("--transform_names", nargs="*")
     data_args.add_argument("--include_only_if_enough_events", action="store_true")
     data_args.add_argument("--use_ds_masks", action="store_true")
+    data_args.add_argument("--use_blurry_rgb", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
     data_args.add_argument(
         "--ds_name", default="mvsec", choices=["mvsec", "rgbe", "ereplica"]
@@ -734,6 +749,7 @@ def get_arg_parser():
     pipe_args = p.add_argument_group("pipeline")
     pipe_args.add_argument("--log_step_freq", type=int, default=20)
     pipe_args.add_argument("--val_epoch_freq", type=int, default=1)
+    pipe_args.add_argument("--use_fuser_ckpt", action="store_true")
     pipe_args.add_argument("--ckpt_dir", default=f"{PROJ_DIR}/checkpoints")
     pipe_args.add_argument("--resume_dir", help="Dir of a previous experiment")
     pipe_args.add_argument("--exp_name", default="test")
@@ -768,6 +784,9 @@ if __name__ == "__main__":
         cfg.exp_name += f"_min-events-{cfg.min_num_events}"
     if cfg.use_sam3d:
         cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
+        cfg.exp_name += f"_sam3d"
+    if cfg.use_blurry_rgb:
+        cfg.exp_name += f"_blurry-rgb"
     cfg.exp_name += f"_ds-{cfg.ds_name}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     exp_name = cfg.exp_name + f"_{current_datetime}"
