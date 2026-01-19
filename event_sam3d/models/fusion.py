@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from einops import rearrange
 
 
 class GatedProjectionFusion(nn.Module):
@@ -8,22 +7,26 @@ class GatedProjectionFusion(nn.Module):
         super().__init__()
         self.nmods = nmods
         self.proj_src = nn.Linear(dim, dim)
-        self.proj2 = nn.Linear(dim, dim)
+        self.proj_tgt = nn.Linear(dim, dim)
         self.gate = nn.Linear(dim * 2, dim)
+        # self.gate.weight.data.zero_()
+        # self.gate.bias.data.zero_()
+        # self.proj_tgt.weight = torch.nn.Parameter(torch.eye(dim))
+        # self.proj_tgt.bias.data.zero_()
 
     def forward(self, src, target):
         """
-        x1, x2: [B, N, D] token streams from two modalities
-        returns: [B, N, D] fused embedding
+        src=event tokens
+        target=rgb tokens
         """
 
-        p1 = self.proj_src(src)
-        p2 = self.proj2(target)
+        p1 = self.proj_tgt(target)
+        p2 = self.proj_src(src)
 
         cat = torch.cat([p1, p2], dim=-1)
-        g = torch.sigmoid(self.gate(cat))
+        g = torch.tanh(self.gate(cat))
 
-        fused = g * p1 + (1 - g) * p2
+        fused = p1 + g * p2
         return fused
 
 
