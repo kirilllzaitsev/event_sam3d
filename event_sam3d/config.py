@@ -15,8 +15,12 @@ DATA_DIR = (
     Path(os.environ["DATA_DIR"]) if "DATA_DIR" in os.environ else WORKSPACE_DIR / "data"
 )
 EDATA_DIR = DATA_DIR
-REPLICA_DIR = DATA_DIR / "event_dataset/Replica_final"
-DEVD_DIR = DATA_DIR / "event_dataset/DEVD" / "DAVIS_DEPTH_SLAM"
+if (DATA_DIR / "event_dataset").exists():
+    REPLICA_DIR = DATA_DIR / "event_dataset/Replica_final"
+    DEVD_DIR = DATA_DIR / "event_dataset/DEVD" / "DAVIS_DEPTH_SLAM"
+else:
+    REPLICA_DIR = DATA_DIR / "Replica_final"
+    DEVD_DIR = DATA_DIR / "DEVD" / "DAVIS_DEPTH_SLAM"
 RGBE_DIR = EDATA_DIR / "eventsam/RGBE-SEG"
 MVSEC_DIR = EDATA_DIR / "mvsec/hdf5"
 RELATED_DIR = WORKSPACE_DIR / "related_work"
