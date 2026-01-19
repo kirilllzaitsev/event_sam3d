@@ -19,7 +19,7 @@ def compute_sparse_sam3d_loss(out_s, out_t):
     for k in ["6drotation_normalized", "scale", "translation"]:
         pred = out_s[k]
         gt = out_t[k]
-        res[f"loss_{k}"] = F.mse_loss(pred, gt)
+        res[f"loss_{k}"] = F.mse_loss(pred.squeeze(), gt.squeeze())
 
     pred_vg = out_s["ss"]
     gt_vg = out_t["ss"]
@@ -93,7 +93,7 @@ def load_st_models(
     if args.resume_dir is not None:
         ckpt_params = dict(
             ss_generator_cond_embedder_ckpt_path=f"{args.resume_dir}/best_ss_generator_cond_embedder.pt",
-            rgbe_fuser_ckpt_path=f"{args.resume_dir}/best_rgbe_fuser.pt",
+            rgbe_fuser_ckpt_path=f"{args.resume_dir}/best_rgbe_fuser.pt" if args.use_fuser_ckpt else None,
         )
     s_model = Inference(
         config_path,
