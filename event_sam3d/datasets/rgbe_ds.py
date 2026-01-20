@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 from event_sam3d.config import RGBE_DIR
 from event_sam3d.utils.common_utils import cast_to_numpy
-from event_sam3d.utils.data_utils import load_sam3_res
+from event_sam3d.utils.data_utils import get_sam3d_path_from_rgb, load_sam3_res, load_sam3d_res
 from event_sam3d.utils.io import load_color
 from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
 
@@ -23,6 +23,7 @@ class RGBEDataset(Dataset):
         event_window_ms=50,
         transform=None,
         use_masks=True,
+        use_sam3d=False,
         use_vg_event_repr=False,
         obj_name="person",
         test_subsplit=None,
@@ -32,6 +33,7 @@ class RGBEDataset(Dataset):
     ):
         self.do_normalize = do_normalize
         self.use_masks = use_masks
+        self.use_sam3d = use_sam3d
         self.use_vg_event_repr = use_vg_event_repr
         self.include_only_if_enough_events = include_only_if_enough_events
         self.height = height
@@ -104,6 +106,10 @@ class RGBEDataset(Dataset):
             sam3_res_path = f'{image_path.replace("rgb_image/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
             mask = load_sam3_res(sam3_res_path)
             sample["mask"] = mask
+        if self.use_sam3d:
+            sam3d_res_path = get_sam3d_path_from_rgb(image_path, self.obj_name)
+            sam3d_res = load_sam3d_res(sam3d_res_path)
+            sample["t"] = sam3d_res
         if self.do_normalize:
             sample["rgb"] = (
                 sample["rgb"] - self.image_pixel_mean

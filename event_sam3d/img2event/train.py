@@ -162,12 +162,12 @@ def build_datasets(cfg):
             len_limit=len_limit,
             include_only_if_enough_events=True,
             min_num_events=1500,
+            use_sam3d=cfg.use_sam3d,
         )
         for filename in train_ds_names:
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
                     seq_name=filename,
-                    use_sam3d=cfg.use_sam3d,
                 )
                 if cfg.ds_name == "ereplica":
                     other_kwargs.update(
@@ -763,6 +763,10 @@ def get_arg_parser():
 
 
 if __name__ == "__main__":
+    # from loguru import logger
+    # logger.remove()
+    # logger.add(sys.stderr, level="INFO")
+    logging.basicConfig(level=logging.INFO)
     sys.path.append(f"{RELATED_DIR}/slam/egsslam")
     p = get_arg_parser()
     cfg = p.parse_args()
