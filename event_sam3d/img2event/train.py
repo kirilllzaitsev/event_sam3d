@@ -188,7 +188,6 @@ def build_datasets(cfg):
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
                     seq_name=filename,
-                    use_sam3d=cfg.use_sam3d,
                 )
             else:
                 if cfg.do_overfit:
@@ -366,10 +365,7 @@ class Trainer:
         if self.cfg.use_sam3d:
             losses_raw = compute_sparse_sam3d_loss(outputs["s_pred"], outputs["t_pred"])
             loss_weights = {}
-            loss_weights["6drotation_normalized"] = 0.05
-            loss_weights["scale"] = 0.02
-            loss_weights["translation"] = 0.1
-            loss_weights["ss"] = 0.2
+            loss_weights["ss"] = 1.0
             losses = {
                 f"loss_{k}": v * losses_raw[f"loss_{k}"]
                 for k, v in loss_weights.items()
@@ -763,9 +759,9 @@ def get_arg_parser():
 
 
 if __name__ == "__main__":
-    # from loguru import logger
-    # logger.remove()
-    # logger.add(sys.stderr, level="INFO")
+    from loguru import logger
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
     logging.basicConfig(level=logging.INFO)
     sys.path.append(f"{RELATED_DIR}/slam/egsslam")
     p = get_arg_parser()
