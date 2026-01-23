@@ -7,7 +7,11 @@ from torch.utils.data import Dataset
 
 from event_sam3d.config import RGBE_DIR
 from event_sam3d.utils.common_utils import cast_to_numpy
-from event_sam3d.utils.data_utils import get_sam3d_path_from_rgb, load_sam3_res, load_sam3d_res
+from event_sam3d.utils.data_utils import (
+    get_sam3d_path_from_rgb,
+    load_sam3_res,
+    load_sam3d_res,
+)
 from event_sam3d.utils.io import load_color
 from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
 
@@ -30,6 +34,7 @@ class RGBEDataset(Dataset):
         len_limit=None,
         include_only_if_enough_events=False,
         min_num_events=500,
+        dirnames=None,
     ):
         self.do_normalize = do_normalize
         self.use_masks = use_masks
@@ -57,6 +62,8 @@ class RGBEDataset(Dataset):
                 line.rstrip()
                 for line in open(os.path.join(self.root, "eventsam_split.txt"))
             ]
+            if dirnames is not None:
+                rgb_paths = [p for p in rgb_paths if p.split("/")[0] in dirnames]
             self.rgb_paths = [f"{self.root}/{p}" for p in rgb_paths]
             self.data_dirs = list(set([p.split("/")[0] for p in rgb_paths]))
         else:
@@ -65,6 +72,10 @@ class RGBEDataset(Dataset):
                 f"{self.root}/{line.rstrip()}"
                 for line in open(os.path.join(self.root, f"{test_subsplit}.txt"))
             ]
+            if dirnames is not None:
+                self.data_dirs = [
+                    d for d in self.data_dirs if d.split("/")[-1] in dirnames
+                ]
             self.rgb_paths = []
             for dirpath in self.data_dirs:
                 rgb_paths = get_ordered_paths(Path(dirpath) / "rgb_image/*")
@@ -86,8 +97,14 @@ class RGBEDataset(Dataset):
     def __repr__(self):
         return print_cls(
             self,
-            excluded_attrs=["rgb_paths", "data_dirs", "image_pixel_mean",
-                            "image_pixel_std", "evimg_pixel_mean", "evimg_pixel_std"],
+            excluded_attrs=[
+                "rgb_paths",
+                "data_dirs",
+                "image_pixel_mean",
+                "image_pixel_std",
+                "evimg_pixel_mean",
+                "evimg_pixel_std",
+            ],
             extra_str=f"{len(self.rgb_paths)=} {self.rgb_paths[:5]=} {self.rgb_paths[-5:]=}\n{len(self.data_dirs)=} {self.data_dirs[:5]=} {self.data_dirs[-5:]=}",
         )
 
