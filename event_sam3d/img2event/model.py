@@ -91,7 +91,7 @@ class TeacherStudentReconstruction(nn.Module):
             res.update(
                 {
                     "t_pred": {
-                        k: v
+                        k: v.to(self.s.device)
                         for k, v in t_kwargs.items()
                         if k in ["6drotation_normalized", "scale", "translation", "ss"]
                     }

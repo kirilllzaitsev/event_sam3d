@@ -93,7 +93,9 @@ def load_st_models(
     if args.resume_dir is not None:
         ckpt_params = dict(
             ss_generator_cond_embedder_ckpt_path=f"{args.resume_dir}/best_ss_generator_cond_embedder.pt",
-            rgbe_fuser_ckpt_path=f"{args.resume_dir}/best_rgbe_fuser.pt" if args.use_fuser_ckpt else None,
+            rgbe_fuser_ckpt_path=(
+                f"{args.resume_dir}/best_rgbe_fuser.pt" if args.use_fuser_ckpt else None
+            ),
         )
     s_model = Inference(
         config_path,
@@ -103,6 +105,7 @@ def load_st_models(
         use_ckpt=not args.do_debug,
         rgbe_fusion_type=args.rgbe_fusion_type,
         use_only_sparse=args.use_sam3d,
+        use_cattn_with_events=args.use_cattn_with_events,
         **ckpt_params,
     )._pipeline
 
@@ -124,6 +127,7 @@ def load_st_models(
         for n, p in s_model.named_parameters():
             if is_train and (
                 "rgbe_fuser" in n
+                or (f"ss_condition_embedder.projection_nets.{event_module_idx}" in n)
             ):
                 p.requires_grad = True
                 trainable_param_names.append(n)
@@ -257,8 +261,8 @@ def reduce_dict(input_dict, average=True, device=None):
         values = torch.stack(values, dim=0)
         if values.device != torch.device("cpu"):
             dist.all_reduce(values)
-        if average:
-            values /= world_size
+            if average:
+                values /= world_size
         reduced_dict = {k: v for k, v in zip(names, values)}
     return reduced_dict
 
