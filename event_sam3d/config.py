@@ -41,8 +41,8 @@ MVSEC_SCENES=[
     "indoor_flying2_data",
     "indoor_flying3_data",
     "indoor_flying4_data",
-    "outdoor_day1_data",
-    "outdoor_day2_data",
+    # "outdoor_day1_data",
+    # "outdoor_day2_data",
 ]
 
 DEVD_SCENES = [
