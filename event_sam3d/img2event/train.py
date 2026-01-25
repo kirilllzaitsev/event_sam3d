@@ -358,6 +358,26 @@ class Trainer:
                     "epoch": epoch,
                 }
             )
+            if cfg.use_cattn_with_events:
+                rgbe_fuser = self.model_wo_ddp.s.models[
+                    "ss_generator"
+                ].reverse_fn.backbone.rgbe_fuser
+                keys = rgbe_fuser.keys()
+                alpha_xattns = {
+                    f"alpha_xattn_{k}": rgbe_fuser[k].alpha_xattn.item() for k in keys
+                }
+                alpha_denses = {
+                    f"alpha_dense_{k}": rgbe_fuser[k].alpha_dense.item() for k in keys
+                }
+                wandb.log(
+                    {
+                        **alpha_xattns,
+                        **alpha_denses,
+                        "alpha_xattn": np.mean(list(alpha_xattns.values())),
+                        "alpha_dense": np.mean(list(alpha_denses.values())),
+                        "epoch": epoch,
+                    }
+                )
 
         return avg_running_losses
 
@@ -377,7 +397,7 @@ class Trainer:
                 outputs["t_feats"],
                 use_attn="lattn" in self.cfg.exp_name,
             )
-            losses = {"embed_losses": embed_losses["losses"]}
+            losses = {}
             total_loss = embed_losses["total_loss"]
             if "loss-rec" in self.cfg.exp_name:
                 rec_loss = F.l1_loss(
@@ -660,7 +680,7 @@ def main(cfg):
                         "best_val_loss": best_val_loss,
                     }
 
-                    save_ckpt(ckpt_dir, model_noddp, state=state)
+                    save_ckpt(ckpt_dir, model_noddp, cfg=cfg, state=state)
 
         if world_size > 1:
             dist.barrier()
@@ -676,7 +696,7 @@ def main(cfg):
             "epoch": epoch,
             "best_val_loss": best_val_loss,
         }
-        save_ckpt(ckpt_dir=ckpt_dir, model_noddp=model_noddp, state=state)
+        save_ckpt(ckpt_dir=ckpt_dir, model_noddp=model_noddp, cfg=cfg, state=state)
 
     if is_main_process(rank):
         wandb.finish()
@@ -684,15 +704,16 @@ def main(cfg):
     cleanup_distributed()
 
 
-def save_ckpt(ckpt_dir, model_noddp, state=None):
+def save_ckpt(ckpt_dir, model_noddp, cfg, state=None):
     ss_generator_cond_embedder_ckpt = {
         "state_dict": get_condition_embedder(model_noddp.s).state_dict()
     }
-    rgbe_fuser_ckpt = {
-        "state_dict": model_noddp.s.condition_embedders[
-            "ss_condition_embedder"
-        ].rgbe_fuser.state_dict()
-    }
+    if cfg.use_cattn_with_events:
+        fuser = model_noddp.s.models["ss_generator"].reverse_fn.backbone.rgbe_fuser
+    else:
+        fuser = model_noddp.s.condition_embedders["ss_condition_embedder"].rgbe_fuser
+
+    rgbe_fuser_ckpt = {"state_dict": fuser.state_dict()}
     best_ss_generator_cond_embedder_path = (
         ckpt_dir / "best_ss_generator_cond_embedder.pt"
     )
