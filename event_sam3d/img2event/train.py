@@ -727,6 +727,7 @@ def get_arg_parser():
         "--rgbe_fusion_type", default="gated", choices=["gated", "attn", "cattn"]
     )
     model_args.add_argument("--block_idxs", default=[2, 5, 9, 14, 19, 22], nargs="*")
+    model_args.add_argument("--use_cattn_with_events", action="store_true")
 
     data_args = p.add_argument_group("data")
     data_args.add_argument("--val_ds_names", nargs="*")
@@ -760,6 +761,7 @@ def get_arg_parser():
 
 if __name__ == "__main__":
     from loguru import logger
+
     logger.remove()
     logger.add(sys.stderr, level="INFO")
     logging.basicConfig(level=logging.INFO)
@@ -787,6 +789,10 @@ if __name__ == "__main__":
         cfg.exp_name += f"_sam3d"
     if cfg.use_blurry_rgb:
         cfg.exp_name += f"_blurry-rgb"
+    if cfg.use_cattn_with_events:
+        cfg.exp_name += f"_cattn-with-events"
+    if cfg.lr != p.get_default("lr"):
+        cfg.exp_name += f"_lr-{cfg.lr}"
     cfg.exp_name += f"_ds-{cfg.ds_name}"
     current_datetime = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     exp_name = cfg.exp_name + f"_{current_datetime}"
