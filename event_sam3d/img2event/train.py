@@ -162,7 +162,7 @@ def build_datasets(cfg):
             len_limit=len_limit,
             include_only_if_enough_events=True,
             min_num_events=1500,
-            use_sam3d=cfg.use_sam3d,
+            use_sam3d=cfg.use_sam3d or cfg.use_rec_loss,
         )
         for filename in train_ds_names:
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
@@ -274,6 +274,8 @@ class Trainer:
                 event_image=None,
             )
         results_dict = self.model(s_kwargs=s_kwargs, t_kwargs=t_kwargs)
+        if cfg.use_rec_loss:
+            results_dict["t"] = {k: v.to(self.model.device) for k,v in batch["t"].items()}
         results_dict["meta"] = {}
 
         return results_dict
@@ -399,11 +401,9 @@ class Trainer:
             )
             losses = {}
             total_loss = embed_losses["total_loss"]
-            if "loss-rec" in self.cfg.exp_name:
-                rec_loss = F.l1_loss(
-                    outputs["s_pred"]["flow_preds"][-1],
-                    outputs["t_pred"]["flow_preds"][-1],
-                )
+            if self.cfg.use_rec_loss:
+                losses_raw = compute_sparse_sam3d_loss(outputs["s_pred"], outputs["t"])
+                rec_loss = 0.5 * losses_raw["loss_ss"]
                 total_loss += rec_loss
                 losses["rec_loss"] = rec_loss.item()
         losses["loss"] = total_loss
@@ -739,6 +739,7 @@ def get_arg_parser():
     train_args.add_argument("--use_amp", action="store_true")
     train_args.add_argument("--use_scheduler", action="store_true")
     train_args.add_argument("--use_sam3d", action="store_true")
+    train_args.add_argument("--use_rec_loss", action="store_true")
     train_args.add_argument("--grad_clip", type=float, default=1.0)
     train_args.add_argument("--es_patience_epochs", type=int, default=20)
     train_args.add_argument("--es_delta", type=float, default=0.0)
@@ -805,9 +806,12 @@ if __name__ == "__main__":
         )
     if cfg.include_only_if_enough_events:
         cfg.exp_name += f"_min-events-{cfg.min_num_events}"
-    if cfg.use_sam3d:
+    if cfg.use_sam3d and not cfg.use_cattn_with_events:
         cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
+    if cfg.use_sam3d:
         cfg.exp_name += f"_sam3d"
+    if cfg.use_rec_loss:
+        cfg.exp_name += f"_rec-loss"
     if cfg.use_blurry_rgb:
         cfg.exp_name += f"_blurry-rgb"
     if cfg.use_cattn_with_events:
