@@ -121,6 +121,26 @@ class RGBEDataset(Dataset):
             "rgb_path": image_path,
             "frame_name": Path(image_path).stem,
         }
+        if self.use_vg_event_repr:
+            events_path = Path(
+                image_path.replace("rgb_image/", "event/")
+                .replace(".png", ".npz")
+                .replace(".jpg", ".npz")
+            )
+            try:
+                events = np.load(events_path, allow_pickle=True)
+            except:
+                # choose another sample due to event corruption
+                new_index = (index + 1) % len(self)
+                return self[new_index]
+            event_repr = self.vg.convert(
+                x=cast_to_torch(events["x"]),
+                y=cast_to_torch(events["y"]),
+                t=cast_to_torch(events["t"]),
+                p=cast_to_torch(events["p"]),
+            )
+            event_repr = self.vg.to_rgb_mono(event_repr)
+            sample["events"] = event_repr
         if self.use_masks:
             sam3_res_path = f'{image_path.replace("rgb_image/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
             mask = load_sam3_res(sam3_res_path)
@@ -130,21 +150,6 @@ class RGBEDataset(Dataset):
             sam3d_res = load_sam3d_res(sam3d_res_path)
             sample["t"] = sam3d_res
 
-        if self.use_vg_event_repr:
-            events_path = Path(
-                image_path.replace("rgb_image/", "event/")
-                .replace(".png", ".npz")
-                .replace(".jpg", ".npz")
-            )
-            events = np.load(events_path, allow_pickle=True)
-            event_repr = self.vg.convert(
-                x=cast_to_torch(events["x"]),
-                y=cast_to_torch(events["y"]),
-                t=cast_to_torch(events["t"]),
-                p=cast_to_torch(events["p"]),
-            )
-            event_repr = self.vg.to_rgb_mono(event_repr)
-            sample["events"] = event_repr
         if self.transform is not None:
             sample = self.transform(sample)
 
