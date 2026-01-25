@@ -6,12 +6,13 @@ import torch
 from torch.utils.data import Dataset
 
 from event_sam3d.config import RGBE_DIR
-from event_sam3d.utils.common_utils import cast_to_numpy
+from event_sam3d.utils.common_utils import cast_to_numpy, cast_to_torch
 from event_sam3d.utils.data_utils import (
     get_sam3d_path_from_rgb,
     load_sam3_res,
     load_sam3d_res,
 )
+from event_sam3d.utils.events_representations import Tencode
 from event_sam3d.utils.io import load_color
 from event_sam3d.utils.misc_utils import get_ordered_paths, print_cls
 
@@ -21,7 +22,6 @@ class RGBEDataset(Dataset):
         self,
         split,
         root=RGBE_DIR,
-        do_normalize=False,
         height=260,
         width=346,
         event_window_ms=50,
@@ -36,7 +36,6 @@ class RGBEDataset(Dataset):
         min_num_events=500,
         dirnames=None,
     ):
-        self.do_normalize = do_normalize
         self.use_masks = use_masks
         self.use_sam3d = use_sam3d
         self.use_vg_event_repr = use_vg_event_repr
@@ -52,6 +51,7 @@ class RGBEDataset(Dataset):
         self.split = split
 
         self.root = f"{root}/{split}"
+        self.hw = (height, width)
         self.image_pixel_mean = torch.Tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
         self.image_pixel_std = torch.Tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
         self.evimg_pixel_mean = self.image_pixel_mean
@@ -90,6 +90,8 @@ class RGBEDataset(Dataset):
                 p for p, m in zip(self.rgb_paths, mask_paths) if os.path.exists(m)
             ]
         self.num_frames = len(self.rgb_paths) if len_limit is None else len_limit
+        if use_vg_event_repr:
+            self.vg = Tencode(height=self.hw[0], width=self.hw[1])
 
     def __len__(self):
         return self.num_frames
@@ -127,14 +129,22 @@ class RGBEDataset(Dataset):
             sam3d_res_path = get_sam3d_path_from_rgb(image_path, self.obj_name)
             sam3d_res = load_sam3d_res(sam3d_res_path)
             sample["t"] = sam3d_res
-        if self.do_normalize:
-            sample["rgb"] = (
-                sample["rgb"] - self.image_pixel_mean
-            ) / self.image_pixel_std
-            sample["events"] = (
-                sample["events"] - self.evimg_pixel_mean
-            ) / self.evimg_pixel_std
 
+        if self.use_vg_event_repr:
+            events_path = Path(
+                image_path.replace("rgb_image/", "event/")
+                .replace(".png", ".npz")
+                .replace(".jpg", ".npz")
+            )
+            events = np.load(events_path, allow_pickle=True)
+            event_repr = self.vg.convert(
+                x=cast_to_torch(events["x"]),
+                y=cast_to_torch(events["y"]),
+                t=cast_to_torch(events["t"]),
+                p=cast_to_torch(events["p"]),
+            )
+            event_repr = self.vg.to_rgb_mono(event_repr)
+            sample["events"] = event_repr
         if self.transform is not None:
             sample = self.transform(sample)
 
