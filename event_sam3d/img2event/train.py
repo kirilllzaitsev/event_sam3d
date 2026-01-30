@@ -91,7 +91,7 @@ def build_model(
         use_only_encoder=use_only_encoder,
     )
     forward_args = None
-    if cfg.use_sam3d:
+    if cfg.use_sam3d and not cfg.use_distill_loss:
         mcls = TeacherStudentReconstruction
         kwargs = dict()
     else:
@@ -162,7 +162,7 @@ def build_datasets(cfg):
             len_limit=len_limit,
             include_only_if_enough_events=True,
             min_num_events=1500,
-            use_sam3d=cfg.use_sam3d or cfg.use_rec_loss,
+            use_sam3d=cfg.use_sam3d,
         )
         for filename in train_ds_names:
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
@@ -274,8 +274,6 @@ class Trainer:
                 event_image=None,
             )
         results_dict = self.model(s_kwargs=s_kwargs, t_kwargs=t_kwargs)
-        if cfg.use_rec_loss:
-            results_dict["t"] = {k: v.to(self.model.device) for k,v in batch["t"].items()}
         results_dict["meta"] = {}
 
         return results_dict
@@ -393,6 +391,14 @@ class Trainer:
                 for k, v in loss_weights.items()
             }
             total_loss = sum(losses.values())
+            if self.cfg.use_distill_loss:
+                embed_losses = compute_embed_loss(
+                    outputs["s_feats"],
+                    outputs["t_feats"],
+                    use_attn="lattn" in self.cfg.exp_name,
+                )
+                embed_loss = 0.5 * embed_losses["total_loss"]
+                total_loss += embed_loss
         else:
             embed_losses = compute_embed_loss(
                 outputs["s_feats"],
@@ -401,11 +407,6 @@ class Trainer:
             )
             losses = {}
             total_loss = embed_losses["total_loss"]
-            if self.cfg.use_rec_loss:
-                losses_raw = compute_sparse_sam3d_loss(outputs["s_pred"], outputs["t"])
-                rec_loss = 0.5 * losses_raw["loss_ss"]
-                total_loss += rec_loss
-                losses["rec_loss"] = rec_loss.item()
         losses["loss"] = total_loss
         return losses
 
@@ -739,7 +740,7 @@ def get_arg_parser():
     train_args.add_argument("--use_amp", action="store_true")
     train_args.add_argument("--use_scheduler", action="store_true")
     train_args.add_argument("--use_sam3d", action="store_true")
-    train_args.add_argument("--use_rec_loss", action="store_true")
+    train_args.add_argument("--use_distill_loss", action="store_true", help="Use distillation loss in addition to SAM3D loss")
     train_args.add_argument("--grad_clip", type=float, default=1.0)
     train_args.add_argument("--es_patience_epochs", type=int, default=20)
     train_args.add_argument("--es_delta", type=float, default=0.0)
@@ -810,8 +811,8 @@ if __name__ == "__main__":
         cfg.exp_name += f"_fusion-{cfg.rgbe_fusion_type}"
     if cfg.use_sam3d:
         cfg.exp_name += f"_sam3d"
-    if cfg.use_rec_loss:
-        cfg.exp_name += f"_rec-loss"
+    if cfg.use_distill_loss:
+        cfg.exp_name += f"_distill-loss"
     if cfg.use_blurry_rgb:
         cfg.exp_name += f"_blurry-rgb"
     if cfg.use_cattn_with_events:

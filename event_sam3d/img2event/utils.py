@@ -79,11 +79,11 @@ def load_st_models(
 
     tag = "hf"
     config_base_path = f"{RELATED_DIR}/rec/sam-3d-objects/checkpoints/{tag}"
-    if use_only_encoder and not args.use_sam3d:
+    if use_only_encoder and not (args.use_sam3d and args.use_distill_loss):
         config_path = f"{config_base_path}/pipeline_encoder.yaml"
     else:
         config_path = f"{config_base_path}/pipeline.yaml"
-    if args.use_sam3d:
+    if args.use_sam3d and not args.use_distill_loss:
         t_model = torch.nn.Identity()
     else:
         t_model = Inference(
@@ -122,37 +122,34 @@ def load_st_models(
     )
     assert event_module_idx == 3, event_module_idx
 
-    if args.use_sam3d:
+    if args.use_sam3d and not args.use_distill_loss:
         trainable_param_names = []
         for n, p in s_model.named_parameters():
-            if is_train and (
-                "rgbe_fuser" in n
-                or (f"ss_condition_embedder.projection_nets.{event_module_idx}" in n)
-            ):
+            if is_train and ("rgbe_fuser" in n):
                 p.requires_grad = True
                 trainable_param_names.append(n)
     else:
-        for p in [t_model, s_model]:
-            p.condition_embedders.ss_condition_embedder.embedder_list = [
-                x
-                for i, x in enumerate(
-                    p.condition_embedders.ss_condition_embedder.embedder_list
+        if not args.use_distill_loss:
+            for p in [t_model, s_model]:
+                p.condition_embedders.ss_condition_embedder.embedder_list = [
+                    x
+                    for i, x in enumerate(
+                        p.condition_embedders.ss_condition_embedder.embedder_list
+                    )
+                    if i in [0, 3]
+                ]
+                p.condition_embedders.ss_condition_embedder.module_list = (
+                    torch.nn.ModuleList(
+                        [
+                            x
+                            for i, x in enumerate(
+                                p.condition_embedders.ss_condition_embedder.module_list
+                            )
+                            if i in [0, 3]
+                        ]
+                    )
                 )
-                if i in [0, 3]
-            ]
-            p.condition_embedders.ss_condition_embedder.module_list = (
-                torch.nn.ModuleList(
-                    [
-                        x
-                        for i, x in enumerate(
-                            p.condition_embedders.ss_condition_embedder.module_list
-                        )
-                        if i in [0, 3]
-                    ]
-                )
-            )
-            p.condition_embedders.ss_condition_embedder.projection_nets = (
-                torch.nn.ModuleList(
+                p.condition_embedders.ss_condition_embedder.projection_nets = torch.nn.ModuleList(
                     [
                         x
                         for i, x in enumerate(
@@ -161,8 +158,7 @@ def load_st_models(
                         if i in [0, 3]
                     ]
                 )
-            )
-        event_module_idx = 1
+            event_module_idx = 1
         trainable_param_names = []
         for n, p in s_model.named_parameters():
             if is_train and (
@@ -173,10 +169,14 @@ def load_st_models(
                         any(f"blocks.{i}." in n for i in block_idxs)
                         and any(x in n for x in [".mlp"])
                     )
+                    or (
+                        f"ss_condition_embedder.projection_nets.{event_module_idx}" in n
+                    )
                 )
             ):
                 p.requires_grad = True
                 trainable_param_names.append(n)
+
     if rank == 0:
         print(f"\n{trainable_param_names=}\n")
         print(
