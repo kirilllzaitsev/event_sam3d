@@ -80,9 +80,21 @@ class TeacherStudentReconstruction(nn.Module):
     def __init__(
         self,
         s,
+        include_embedder_out=False,
     ):
         super().__init__()
         self.s = s
+        self.include_embedder_out = include_embedder_out
+
+        self.s_hooks = []
+        self.s_embeds = defaultdict(list)
+        if include_embedder_out:
+            layer_s = self.s.condition_embedders["ss_condition_embedder"]
+            for k in ["cat_tokens"]:
+                hook = layer_s.register_forward_hook(
+                    get_hook(k, embeds=self.s_embeds, fn=functools.partial(dict_fn, k=k))
+                )
+                self.s_hooks.append(hook)
 
     def forward(self, s_kwargs, t_kwargs=None, **kwargs):
         s_pred = self.s(**s_kwargs, **kwargs)
@@ -93,10 +105,12 @@ class TeacherStudentReconstruction(nn.Module):
                     "t_pred": {
                         k: v.to(self.s.device)
                         for k, v in t_kwargs.items()
-                        if k in ["6drotation_normalized", "scale", "translation", "ss"]
+                        if k in ["6drotation_normalized", "scale", "translation", "ss", "shape"]
                     }
                 }
             )
+            if self.include_embedder_out:
+                res.update({"condition_args": self.s_embeds["cat_tokens"]})
         return res
 
 
