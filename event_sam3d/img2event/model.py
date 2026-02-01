@@ -80,37 +80,51 @@ class TeacherStudentReconstruction(nn.Module):
     def __init__(
         self,
         s,
-        include_embedder_out=False,
+        use_diffusion_loss=False,
+        diffusion_loss_type=None
     ):
         super().__init__()
-        self.s = s
-        self.include_embedder_out = include_embedder_out
+        
+        self.use_diffusion_loss = use_diffusion_loss
 
-        self.s_hooks = []
-        self.s_embeds = defaultdict(list)
-        if include_embedder_out:
-            layer_s = self.s.condition_embedders["ss_condition_embedder"]
-            for k in ["cat_tokens"]:
-                hook = layer_s.register_forward_hook(
-                    get_hook(k, embeds=self.s_embeds, fn=functools.partial(dict_fn, k=k))
-                )
-                self.s_hooks.append(hook)
+        self.s = s
+        self.diffusion_loss_type = diffusion_loss_type
 
     def forward(self, s_kwargs, t_kwargs=None, **kwargs):
-        s_pred = self.s(**s_kwargs, **kwargs)
-        res = {"s_pred": s_pred}
+        if self.use_diffusion_loss and self.training:
+            assert t_kwargs is not None
+            cond = self.s.extract_embeds(**s_kwargs, **kwargs)
+            loss, losses = self.s.models["ss_generator"].loss(
+                {
+                    k: v.to(self.s.device)
+                    for k, v in t_kwargs.items()
+                    if k
+                    in [
+                        "shape",
+                        "6drotation_normalized",
+                        "scale",
+                        "translation",
+                        "translation_scale",
+                    ]
+                },
+                *cond['condition_args'],
+                **cond['condition_kwargs'],
+                use_sc=self.diffusion_loss_type == "shortcut"
+            )
+            res = {"loss": loss, "losses": losses}
+        else:
+            s_pred = self.s(**s_kwargs, **kwargs)
+            res = {"s_pred": s_pred}
         if t_kwargs is not None:
             res.update(
                 {
                     "t_pred": {
                         k: v.to(self.s.device)
                         for k, v in t_kwargs.items()
-                        if k in ["6drotation_normalized", "scale", "translation", "ss", "shape"]
+                        if k in ["6drotation_normalized", "scale", "translation", "ss"]
                     }
                 }
             )
-            if self.include_embedder_out:
-                res.update({"condition_args": self.s_embeds["cat_tokens"]})
         return res
 
 
