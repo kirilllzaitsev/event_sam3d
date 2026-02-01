@@ -93,7 +93,10 @@ def build_model(
     forward_args = None
     if cfg.use_sam3d and not cfg.use_distill_loss:
         mcls = TeacherStudentReconstruction
-        kwargs = dict()
+        kwargs = dict(
+            use_diffusion_loss=cfg.use_diffusion_loss,
+            diffusion_loss_type=cfg.diffusion_loss_type,
+        )
     else:
         mcls = TeacherStudent
         kwargs = dict(
@@ -251,6 +254,15 @@ class Trainer:
         self.model_wo_ddp = model.module if isinstance(model, DDP) else model
         self.hist = defaultdict(list)
 
+        if cfg.use_diffusion_loss:
+            self.model_wo_ddp.s.models["ss_generator"].loss_weights = {
+                "6drotation_normalized": 0.1,
+                "scale": 0.1,
+                "shape": 1.0,
+                "translation": 1.0,
+                "translation_scale": 0.0,
+            }
+
     def ts_forward(
         self,
         batch,
@@ -382,15 +394,22 @@ class Trainer:
         return avg_running_losses
 
     def calc_losses(self, outputs):
+        is_train = self.model.training
         if self.cfg.use_sam3d:
-            losses_raw = compute_sparse_sam3d_loss(outputs["s_pred"], outputs["t_pred"])
-            loss_weights = {}
-            loss_weights["ss"] = 1.0
-            losses = {
-                f"loss_{k}": v * losses_raw[f"loss_{k}"]
-                for k, v in loss_weights.items()
-            }
-            total_loss = sum(losses.values())
+            if self.cfg.use_diffusion_loss and is_train:
+                total_loss = outputs["loss"]
+                losses = outputs["losses"]
+            else:
+                losses_raw = compute_sparse_sam3d_loss(
+                    outputs["s_pred"], outputs["t_pred"]
+                )
+                loss_weights = {}
+                loss_weights["ss"] = 1.0
+                losses = {
+                    f"loss_{k}": v * losses_raw[f"loss_{k}"]
+                    for k, v in loss_weights.items()
+                }
+                total_loss = sum(losses.values())
             if self.cfg.use_distill_loss:
                 embed_losses = compute_embed_loss(
                     outputs["s_feats"],
@@ -740,7 +759,17 @@ def get_arg_parser():
     train_args.add_argument("--use_amp", action="store_true")
     train_args.add_argument("--use_scheduler", action="store_true")
     train_args.add_argument("--use_sam3d", action="store_true")
-    train_args.add_argument("--use_distill_loss", action="store_true", help="Use distillation loss in addition to SAM3D loss")
+    train_args.add_argument(
+        "--use_distill_loss",
+        action="store_true",
+        help="Use distillation loss in addition to SAM3D loss",
+    )
+    train_args.add_argument(
+        "--use_diffusion_loss", action="store_true", help="Use diffusion loss for sam3d"
+    )
+    train_args.add_argument(
+        "--diffusion_loss_type", default="shortcut", choices=["shortcut", "fm"]
+    )
     train_args.add_argument("--grad_clip", type=float, default=1.0)
     train_args.add_argument("--es_patience_epochs", type=int, default=20)
     train_args.add_argument("--es_delta", type=float, default=0.0)
@@ -817,6 +846,8 @@ if __name__ == "__main__":
         cfg.exp_name += f"_blurry-rgb"
     if cfg.use_cattn_with_events:
         cfg.exp_name += f"_cattn-with-events"
+    if cfg.use_diffusion_loss:
+        cfg.exp_name += f"_diffusion-{cfg.diffusion_loss_type}"
     if cfg.lr != p.get_default("lr"):
         cfg.exp_name += f"_lr-{cfg.lr}"
     cfg.exp_name += f"_ds-{cfg.ds_name}"
