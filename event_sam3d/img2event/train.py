@@ -262,6 +262,11 @@ class Trainer:
                 "translation": 1.0,
                 "translation_scale": 0.0,
             }
+            if cfg.use_only_shape_loss:
+                self.model_wo_ddp.s.models["ss_generator"].loss_weights = {
+                    k: (0.1 if k in ["shape"] else 0.0)
+                    for k in self.model_wo_ddp.s.models["ss_generator"].loss_weights
+                }
 
     def ts_forward(
         self,
@@ -768,6 +773,9 @@ def get_arg_parser():
         "--use_diffusion_loss", action="store_true", help="Use diffusion loss for sam3d"
     )
     train_args.add_argument(
+        "--use_only_shape_loss", action="store_true", help="Use diffusion loss for shape only"
+    )
+    train_args.add_argument(
         "--diffusion_loss_type", default="shortcut", choices=["shortcut", "fm"]
     )
     train_args.add_argument("--grad_clip", type=float, default=1.0)
@@ -848,6 +856,8 @@ if __name__ == "__main__":
         cfg.exp_name += f"_cattn-with-events"
     if cfg.use_diffusion_loss:
         cfg.exp_name += f"_diffusion-{cfg.diffusion_loss_type}"
+        if cfg.use_only_shape_loss:
+            cfg.exp_name += f"-only-shape"
     if cfg.lr != p.get_default("lr"):
         cfg.exp_name += f"_lr-{cfg.lr}"
     cfg.exp_name += f"_ds-{cfg.ds_name}"
