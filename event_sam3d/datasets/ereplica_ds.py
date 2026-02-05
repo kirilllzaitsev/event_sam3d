@@ -63,28 +63,34 @@ class EventReplicaDataset:
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
         if use_masks:
-            mask_paths = []
-            for p in self.rgb_paths:
-                mp = (
-                    p.replace("original_images/", f"sam3/{obj_name}_")
-                    .replace(".png", ".pt")
-                    .replace(".jpg", ".pt")
-                )
-                if os.path.exists(mp):
-                    mask_paths.append(mp)
-            mask_frame_names = set(
-                Path(p).stem.replace(f"{obj_name}_", "") for p in mask_paths
-            )
-            target_idxs = [
-                idx
-                for idx, p in enumerate(self.rgb_paths)
-                if Path(p).stem in mask_frame_names
-            ]
-            self.rgb_paths = [self.rgb_paths[i] for i in target_idxs]
-            self.img_timestamps = self.img_timestamps[target_idxs]
+            self.filter_by_obj_name(obj_name, use_masks=True)
+        if use_sam3d:
+            self.filter_by_obj_name(obj_name, use_masks=False)
         self.num_frames = len(self.rgb_paths)
         if len_limit is not None:
             self.num_frames = min(self.num_frames, len_limit)
+
+    def filter_by_obj_name(self, obj_name, use_masks=True):
+        mask_paths = []
+        subdir = "sam3" if use_masks else "sam3d_sparse"
+        for p in self.rgb_paths:
+            mp = (
+                p.replace("original_images/", f"{subdir}/{obj_name}_")
+                .replace(".png", ".pt")
+                .replace(".jpg", ".pt")
+            )
+            if os.path.exists(mp):
+                mask_paths.append(mp)
+        mask_frame_names = set(
+            Path(p).stem.replace(f"{obj_name}_", "") for p in mask_paths
+        )
+        target_idxs = [
+            idx
+            for idx, p in enumerate(self.rgb_paths)
+            if Path(p).stem in mask_frame_names
+        ]
+        self.rgb_paths = [self.rgb_paths[i] for i in target_idxs]
+        self.img_timestamps = self.img_timestamps[target_idxs]
 
     def __len__(self):
         return self.num_frames
