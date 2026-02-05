@@ -130,10 +130,10 @@ def build_datasets(cfg):
         val_ds_names = ["easy", "medium", "hard"]
         if obj_names is None:
             obj_names = ["person"]
-    if cfg.train_ds_names is not None:
-        train_ds_names = cfg.train_ds_names
     if cfg.val_ds_names is not None:
         val_ds_names = cfg.val_ds_names
+    if cfg.train_ds_names is not None:
+        train_ds_names = [n for n in cfg.train_ds_names if n not in val_ds_names]
     if cfg.do_overfit:
         train_ds_names = train_ds_names[:1]
         val_ds_names = train_ds_names[:1]
@@ -167,17 +167,17 @@ def build_datasets(cfg):
             min_num_events=1500,
             use_sam3d=cfg.use_sam3d,
         )
+        if cfg.ds_name == "ereplica":
+            common_kwargs.update(
+                dict(
+                    use_blurry_rgb=cfg.use_blurry_rgb,
+                )
+            )
         for filename in train_ds_names:
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
                     seq_name=filename,
                 )
-                if cfg.ds_name == "ereplica":
-                    other_kwargs.update(
-                        dict(
-                            use_blurry_rgb=cfg.use_blurry_rgb,
-                        )
-                    )
             else:
                 other_kwargs = dict(split="train")
             dataset = ds_cls(
@@ -186,7 +186,7 @@ def build_datasets(cfg):
                 **common_kwargs,
             )
             if len(dataset) > 0:
-                train_datasets[f"{filename}_{obj_name}"] = dataset
+                train_datasets[f"{obj_name}_{filename}"] = dataset
         for filename in val_ds_names:
             if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
                 other_kwargs = dict(
@@ -203,7 +203,7 @@ def build_datasets(cfg):
                 **common_kwargs,
             )
             if len(dataset) > 0:
-                val_datasets[f"{filename}_{obj_name}"] = dataset
+                val_datasets[f"{obj_name}_{filename}"] = dataset
     if len(train_datasets) == 0 or len(val_datasets) == 0:
         raise RuntimeError(f"{len(train_datasets)=} {len(val_datasets)=}")
     train_ds = IEDataset(datasets=train_datasets)
