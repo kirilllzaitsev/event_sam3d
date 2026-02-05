@@ -47,6 +47,8 @@ def load_mask_(path):
 
 
 def load_rgb_(path):
+    if not os.path.exists(path):
+        raise ValueError(f"File not found: {path}")
     return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
 
 
