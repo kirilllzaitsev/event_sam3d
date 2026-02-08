@@ -50,6 +50,7 @@ class Transform:
         blur_ksize_max=15,
         wv_levels_min=0,
         wv_levels_max=3,
+        resize_hw=None,
     ):
         self.names = names
         self.crop_size = crop_size
@@ -57,7 +58,11 @@ class Transform:
         self.blur_ksize_max = blur_ksize_max
         self.wv_levels_min = wv_levels_min
         self.wv_levels_max = wv_levels_max
+        self.resize_hw = resize_hw
         self.probs = {n: 0.5 for n in names} if probs is None else probs
+
+        if 'resize' in names:
+            assert resize_hw is not None
 
     def __call__(self, sample):
         target_keys = ["rgb", "mask", "events", "rgb_clean"]
@@ -93,6 +98,14 @@ class Transform:
                             (w, h),
                             interpolation=cv2.INTER_LINEAR,
                         )
+        if "resize" in self.names:
+            for k in target_keys:
+                if k in sample:
+                    sample[k] = cv2.resize(
+                        sample[k],
+                        (self.resize_hw[1], self.resize_hw[0]),
+                        interpolation=cv2.INTER_LINEAR,
+                    )
         if "rgb_clean" not in sample:
             sample["rgb_clean"] = sample["rgb"].copy()
         if "gblur" in self.names and np.random.rand() < self.probs["gblur"]:
