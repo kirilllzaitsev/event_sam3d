@@ -120,6 +120,26 @@ def build_datasets(cfg):
         if obj_names is None:
             obj_names = ["barrel"]
         train_ds_names = [s for s in MVSEC_SCENES if s not in val_ds_names]
+    elif cfg.ds_name == "co3d":
+        obj_names_val_unseen = ["toaster"]
+        obj_names_val_seen = ["bottle", "microwave"]
+        if obj_names is None:
+            obj_names = CO3D_OBJECTS
+        obj_names = [obj for obj in obj_names if obj not in obj_names_val_unseen]
+        meta = json.load(open(f"{CO3D_DIR}/meta.json"))
+        train_ds_names = []
+        val_ds_names = []
+        for obj in obj_names:
+            seq_names = meta[obj]
+            if obj in obj_names_val_seen:
+                train_ds_names.extend([f"{obj}/{n}" for n in seq_names[:10]])
+                val_ds_names.extend([f"{obj}/{n}" for n in seq_names[10:]])
+            else:
+                train_ds_names.extend([f"{obj}/{n}" for n in seq_names])
+
+        for obj in obj_names_val_unseen:
+            val_ds_names.extend([f"{obj}/{n}" for n in meta[obj][:10]])
+
     elif cfg.ds_name == "ereplica":
         val_ds_names = ["room2"]
         if obj_names is None:
@@ -145,17 +165,27 @@ def build_datasets(cfg):
     train_datasets = {}
     val_datasets = {}
 
+    transform_names = cfg.transform_names or []
+    resize_hw = None
     if cfg.ds_name == "mvsec":
         ds_cls = MVSECDataset
     elif cfg.ds_name == "ereplica":
         ds_cls = EventReplicaDataset
+    elif cfg.ds_name == "co3d":
+        ds_cls = CO3DDataset
+        transform_names += ["resize"]
+        resize_hw = (260, 346)
     else:
         ds_cls = RGBEDataset
 
-    if cfg.transform_names is None:
-        transform = None
+    if len(transform_names) > 0:
+        transform = Transform(names=transform_names, resize_hw=resize_hw)
     else:
-        transform = Transform(names=cfg.transform_names)
+        transform = None
+    if cfg.ds_name == "co3d":
+        transform_val = Transform(names=["resize"], resize_hw=resize_hw)
+    else:
+        transform_val = None
 
     for obj_name in obj_names:
         common_kwargs = dict(
