@@ -142,14 +142,26 @@ class CO3DDataset:
         sample = {
             "rgb": rgb if self.use_blurry_rgb else rgb_clean,
             "rgb_clean": rgb_clean,
-            # "events": events,
+            "events": events,
             "rgb_path": rgb_path,
             "frame_name": Path(rgb_path).stem,
             "ts": ts,
         }
         if self.use_masks:
-            mask_path = rgb_path.replace("images/", "masks/").replace(".jpg", ".png")
-            mask = load_mask(mask_path)
+            use_orig_mask = not self.use_sam3_masks
+            if self.use_sam3_masks:
+                sam3_res_path = rgb_path.replace("images/", "sam3/").replace(
+                    ".jpg", ".pt"
+                )
+                if os.path.exists(sam3_res_path):
+                    mask = load_sam3_res(sam3_res_path)
+                else:
+                    use_orig_mask = True
+            if use_orig_mask:
+                mask_path = rgb_path.replace("images/", "masks/").replace(
+                    ".jpg", ".png"
+                )
+                mask = load_mask(mask_path)
             sample["mask"] = mask.astype(np.uint8)
         if self.use_sam3d:
             sam3d_res_path = get_sam3d_path_from_rgb(rgb_path, self.obj_name)
