@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 import sys
@@ -17,12 +18,15 @@ from tqdm import tqdm
 
 import wandb
 from event_sam3d.config import (
+    CO3D_DIR,
+    CO3D_OBJECTS,
     IS_CLUSTER,
     MVSEC_SCENES,
     PROJ_DIR,
     RELATED_DIR,
     REPLICA_SCENES,
 )
+from event_sam3d.datasets.co3d_ds import CO3DDataset
 from event_sam3d.datasets.ereplica_ds import EventReplicaDataset
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
@@ -187,7 +191,7 @@ def build_datasets(cfg, rank=0):
     else:
         transform_val = None
 
-    for obj_name in obj_names:
+    for obj_name in tqdm(obj_names, desc="Objects", disable=not is_main_process(rank)):
         common_kwargs = dict(
             obj_name=obj_name,
             use_masks=cfg.use_ds_masks,
@@ -203,8 +207,14 @@ def build_datasets(cfg, rank=0):
                     use_blurry_rgb=cfg.use_blurry_rgb,
                 )
             )
-        for filename in train_ds_names:
-            if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
+        if cfg.ds_name == "co3d":
+            filenames = [n for n in train_ds_names if n.startswith(f"{obj_name}/")]
+            filenames_val = [n for n in val_ds_names if n.startswith(f"{obj_name}/")]
+        else:
+            filenames = train_ds_names
+            filenames_val = val_ds_names
+        for filename in filenames:
+            if cfg.ds_name in ["mvsec", "ereplica", "co3d"]:
                 other_kwargs = dict(
                     seq_name=filename,
                 )
@@ -217,8 +227,8 @@ def build_datasets(cfg, rank=0):
             )
             if len(dataset) > 0:
                 train_datasets[f"{obj_name}_{filename}"] = dataset
-        for filename in val_ds_names:
-            if cfg.ds_name == "mvsec" or cfg.ds_name == "ereplica":
+        for filename in filenames_val:
+            if cfg.ds_name in ["mvsec", "ereplica", "co3d"]:
                 other_kwargs = dict(
                     seq_name=filename,
                 )
@@ -228,7 +238,7 @@ def build_datasets(cfg, rank=0):
                 else:
                     other_kwargs = dict(split="test-normal", test_subsplit=filename)
             dataset = ds_cls(
-                transform=transform,
+                transform=transform_val,
                 **other_kwargs,
                 **common_kwargs,
             )
@@ -591,7 +601,7 @@ def main(cfg):
             )
 
     # Build datasets (non-distributed)
-    train_dataset, val_dataset = build_datasets(cfg)
+    train_dataset, val_dataset = build_datasets(cfg, rank=rank)
 
     # Distributed samplers
     if world_size > 1:
@@ -803,7 +813,9 @@ def get_arg_parser():
         "--use_diffusion_loss", action="store_true", help="Use diffusion loss for sam3d"
     )
     train_args.add_argument(
-        "--use_only_shape_loss", action="store_true", help="Use diffusion loss for shape only"
+        "--use_only_shape_loss",
+        action="store_true",
+        help="Use diffusion loss for shape only",
     )
     train_args.add_argument(
         "--diffusion_loss_type", default="shortcut", choices=["shortcut", "fm"]
@@ -830,7 +842,7 @@ def get_arg_parser():
     data_args.add_argument("--use_blurry_rgb", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
     data_args.add_argument(
-        "--ds_name", default="mvsec", choices=["mvsec", "rgbe", "ereplica"]
+        "--ds_name", default="mvsec", choices=["mvsec", "rgbe", "ereplica", "co3d"]
     )
 
     pipe_args = p.add_argument_group("pipeline")
