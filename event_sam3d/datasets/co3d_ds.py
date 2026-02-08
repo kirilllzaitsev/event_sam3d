@@ -64,7 +64,10 @@ class CO3DDataset:
         self.obj_name = seq_name.split("/")[0]
 
         self.input_folder = Path(self.root) / f"{self.seq_name}"
-        self.rgb_paths = get_ordered_paths(f"{self.input_folder}/images/*.jpg")[1:]
+        self.num_frames_skipped = 1
+        self.rgb_paths = get_ordered_paths(f"{self.input_folder}/images/*.jpg")[
+            self.num_frames_skipped :
+        ]
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
         if use_sam3d:
@@ -73,8 +76,14 @@ class CO3DDataset:
         if len_limit is not None:
             self.num_frames = min(self.num_frames, len_limit)
 
-        n = len(self.rgb_paths)
-        self.img_timestamps = np.arange(1, n, dtype=np.float64) / input_frame_rate
+        self.img_timestamps = (
+            np.arange(
+                self.num_frames_skipped,
+                self.num_frames + self.num_frames_skipped,
+                dtype=np.float64,
+            )
+            / input_frame_rate
+        )
 
         # -- event reader (cache timestamps once) -----------------------------
         self.reader = AEDat2Reader(
