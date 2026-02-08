@@ -110,7 +110,7 @@ def build_model(
     return {"model": ts_model, "forward_args": forward_args}
 
 
-def build_datasets(cfg):
+def build_datasets(cfg, rank=0):
     """
     Return train_dataset, val_dataset.
     """
@@ -132,13 +132,13 @@ def build_datasets(cfg):
         for obj in obj_names:
             seq_names = meta[obj]
             if obj in obj_names_val_seen:
-                train_ds_names.extend([f"{obj}/{n}" for n in seq_names[:10]])
-                val_ds_names.extend([f"{obj}/{n}" for n in seq_names[10:]])
+                train_ds_names.extend([f"{obj}/{n}" for n in seq_names[:15]])
+                val_ds_names.extend([f"{obj}/{n}" for n in seq_names[15:]])
             else:
                 train_ds_names.extend([f"{obj}/{n}" for n in seq_names])
 
         for obj in obj_names_val_unseen:
-            val_ds_names.extend([f"{obj}/{n}" for n in meta[obj][:10]])
+            val_ds_names.extend([f"{obj}/{n}" for n in meta[obj][:5]])
 
     elif cfg.ds_name == "ereplica":
         val_ds_names = ["room2"]
