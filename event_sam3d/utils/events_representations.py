@@ -73,20 +73,20 @@ class VoxelGrid(EventRepresentation):
         )
 
     def convert(
-        self, x: torch.Tensor, y: torch.Tensor, pol: torch.Tensor, time: torch.Tensor
+        self, x: torch.Tensor, y: torch.Tensor, p: torch.Tensor, t: torch.Tensor
     ):
-        assert x.shape == y.shape == pol.shape == time.shape
+        assert x.shape == y.shape == p.shape == t.shape
         assert x.ndim == 1
 
         C, H, W = self.voxel_grid.shape
         with torch.no_grad():
-            self.voxel_grid = self.voxel_grid.to(pol.device)
+            self.voxel_grid = self.voxel_grid.to(p.device)
             voxel_grid = self.voxel_grid.clone()
 
             if x.shape[0] == 0:
                 return voxel_grid
 
-            t_norm = time
+            t_norm = t
             t_norm = (
                 (C - 1) * (t_norm - t_norm[0]) / (t_norm[-1] - t_norm[0])
             )  # This normalizes t between 0 and C-1
@@ -95,7 +95,7 @@ class VoxelGrid(EventRepresentation):
             y0 = y.int()  # Let's make the y an integer
             t0 = t_norm.int()  # Let's make the normalized time an integer
 
-            value = 2 * pol - 1  # Let's make pol from in [0; 1] to in [-1; 1]
+            value = 2 * p - 1  # Let's make pol from in [0; 1] to in [-1; 1]
 
             for xlim in [x0, x0 + 1]:
                 for ylim in [y0, y0 + 1]:

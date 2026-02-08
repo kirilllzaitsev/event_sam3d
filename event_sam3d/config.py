@@ -15,6 +15,7 @@ DATA_DIR = (
     Path(os.environ["DATA_DIR"]) if "DATA_DIR" in os.environ else WORKSPACE_DIR / "data"
 )
 EDATA_DIR = DATA_DIR
+CO3D_DIR = DATA_DIR / "co3d"
 if (DATA_DIR / "event_dataset").exists():
     REPLICA_DIR = DATA_DIR / "event_dataset/Replica_final"
     DEVD_DIR = DATA_DIR / "event_dataset/DEVD" / "DAVIS_DEPTH_SLAM"
@@ -36,7 +37,7 @@ REPLICA_SCENES = [
     "room1",
     "room2",
 ]
-MVSEC_SCENES=[
+MVSEC_SCENES = [
     "indoor_flying1_data",
     "indoor_flying2_data",
     "indoor_flying3_data",
@@ -44,10 +45,30 @@ MVSEC_SCENES=[
     # "outdoor_day1_data",
     # "outdoor_day2_data",
 ]
-
 DEVD_SCENES = [
     "mahjong1",
     "mountain1",
     "table1",
     "testbed1",
+]
+
+CO3D_OBJECTS = [
+    "tv",
+    "microwave",
+    "cup",
+    "handbag",
+    "couch",
+    "bottle",
+    "bowl",
+    "laptop",
+    "wineglass",
+    "toaster",
+    "bench",
+    "suitcase",
+    "keyboard",
+    "toilet",
+    "vase",
+    "backpack",
+    "chair",
+    "plant",
 ]
