@@ -70,12 +70,7 @@ class CO3DDataset:
         ]
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
-        if use_sam3d:
-            self.filter_by_obj_name(use_masks=False)
         self.num_frames = len(self.rgb_paths)
-        if len_limit is not None:
-            self.num_frames = min(self.num_frames, len_limit)
-
         self.img_timestamps = (
             np.arange(
                 self.num_frames_skipped,
@@ -84,6 +79,13 @@ class CO3DDataset:
             )
             / input_frame_rate
         )
+        if use_masks:
+            self.filter_by_obj_name(use_masks=True)
+        if use_sam3d:
+            self.filter_by_obj_name(use_masks=False)
+        self.num_frames = len(self.rgb_paths)
+        if len_limit is not None:
+            self.num_frames = min(self.num_frames, len_limit)
 
         # -- event reader (cache timestamps once) -----------------------------
         self.reader = AEDat2Reader(
@@ -100,6 +102,12 @@ class CO3DDataset:
                 ".jpg", ".png" if use_masks else ".pt"
             )
             if os.path.exists(mp):
+                if use_masks:
+                    m = load_mask(mp)
+                    h, w = m.shape
+                    n_px = m.sum()
+                    if n_px < 200 or n_px > h * w * 0.9:
+                        continue
                 mask_paths.append(mp)
         mask_frame_names = set(Path(p).stem for p in mask_paths)
         target_idxs = [
@@ -108,7 +116,7 @@ class CO3DDataset:
             if Path(p).stem in mask_frame_names
         ]
         self.rgb_paths = [self.rgb_paths[i] for i in target_idxs]
-        # self.img_timestamps = self.img_timestamps[target_idxs]
+        self.img_timestamps = self.img_timestamps[target_idxs]
 
     def __len__(self):
         return self.num_frames
