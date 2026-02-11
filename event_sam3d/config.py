@@ -16,6 +16,7 @@ DATA_DIR = (
 )
 EDATA_DIR = DATA_DIR
 CO3D_DIR = DATA_DIR / "co3d"
+OBJ_DIR = DATA_DIR / "objaverse"
 if (DATA_DIR / "event_dataset").exists():
     REPLICA_DIR = DATA_DIR / "event_dataset/Replica_final"
     DEVD_DIR = DATA_DIR / "event_dataset/DEVD" / "DAVIS_DEPTH_SLAM"

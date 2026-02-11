@@ -134,7 +134,9 @@ def build_datasets(cfg, rank=0):
         train_ds_names = []
         val_ds_names = []
         for obj in obj_names:
-            seq_names = meta[obj]
+            seq_names = meta[obj][:]
+            if obj == "chair":
+                seq_names = [n for n in seq_names if "127_14753_30079" not in n]
             if obj in obj_names_val_seen:
                 train_ds_names.extend([f"{obj}/{n}" for n in seq_names[:15]])
                 val_ds_names.extend([f"{obj}/{n}" for n in seq_names[15:]])
