@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from event_sam3d.config import OBJ_DIR, RELATED_DIR
+from event_sam3d.nb_utils_static import wrap_with_futures
 from event_sam3d.utils.common_utils import cast_to_torch
 from event_sam3d.utils.data_utils import (
     get_sam3d_path_from_rgb,
@@ -91,7 +92,6 @@ class ObjDataset:
         if len_limit is not None:
             self.num_frames = min(self.num_frames, len_limit)
 
-
     def filter_by_obj_name(self, use_masks=True):
         mask_paths = []
         subdir = "masks" if use_masks else "sam3d_sparse"
@@ -99,15 +99,21 @@ class ObjDataset:
             mp = p.replace("images/", f"{subdir}/").replace(
                 ".png", ".png" if use_masks else ".pt"
             )
-            if os.path.exists(mp):
-                if use_masks:
-                    m = load_mask(mp)
-                    h, w = m.shape
-                    n_px = m.sum()
-                    if n_px < 200 or n_px > h * w * 0.9:
-                        continue
+            if os.path.exists(mp) and use_masks:
                 mask_paths.append(mp)
-        mask_frame_names = set(Path(p).stem for p in mask_paths)
+        valid_paths = []
+
+        def filter_invalid_mask(mp):
+            res = mp
+            m = load_mask(mp)
+            h, w = m.shape
+            n_px = m.sum()
+            if n_px < h * w * 0.05 or n_px > h * w * 0.9:
+                res = None
+            return res
+
+        valid_paths = wrap_with_futures(mask_paths, filter_invalid_mask, disable_tqdm=True)
+        mask_frame_names = set(Path(p).stem for p in valid_paths)
         target_idxs = [
             idx
             for idx, p in enumerate(self.rgb_paths)
