@@ -324,9 +324,9 @@ def EDI_rgb(blurry_image, events, H, W, threshold=0.3):
     return img
 
 
-def deblur_with_edi(original_image, events):
+def deblur_with_edi(original_image, events, device='cuda'):
     hw = original_image.shape[-2:]
-    event_image, norm_ts = event2event_image(events, num_img=8, H=hw[0], W=hw[1])
+    event_image, norm_ts = event2event_image(events, num_img=8, H=hw[0], W=hw[1], device=device)
     gt_image = EDI_rgb(
         original_image,
         event_image,
