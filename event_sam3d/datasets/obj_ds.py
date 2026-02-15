@@ -30,6 +30,7 @@ class ObjDataset:
         nr_temporal_bins=5,
         use_masks=True,
         use_sam3_masks=False,
+        use_event_masks=True,
         use_sam3d=False,
         use_vg_event_repr=False,
         len_limit=None,
@@ -54,6 +55,7 @@ class ObjDataset:
 
         self.use_masks = use_masks
         self.use_sam3_masks = use_sam3_masks
+        self.use_event_masks = use_event_masks
         self.use_sam3d = use_sam3d
         self.use_vg_event_repr = use_vg_event_repr
         self.include_only_if_enough_events = include_only_if_enough_events
@@ -101,18 +103,35 @@ class ObjDataset:
             )
             if os.path.exists(mp) and use_masks:
                 mask_paths.append(mp)
-        valid_paths = []
+        if self.use_event_masks:
+            def filter_invalid_mask(index):
+                ts=self.img_timestamps[index]
+                events = self.reader.get_event_window_fast(
+                    ts, self.half_event_window_us / 1e6, "xytp"
+                )
+                return len(events) > 400
+            valid=wrap_with_futures(list(range(len(mask_paths))), filter_invalid_mask, disable_tqdm=True)
+            valid_paths = [p for i,p in enumerate(mask_paths) if valid[i]]
+        else:
+            subdir = "masks" if use_masks else "sam3d_sparse"
+            for p in self.rgb_paths:
+                mp = p.replace("images/", f"{subdir}/").replace(
+                    ".png", ".png" if use_masks else ".pt"
+                )
+                if os.path.exists(mp) and use_masks:
+                    mask_paths.append(mp)
+            valid_paths = []
 
-        def filter_invalid_mask(mp):
-            res = mp
-            m = load_mask(mp)
-            h, w = m.shape
-            n_px = m.sum()
-            if n_px < h * w * 0.05 or n_px > h * w * 0.9:
-                res = None
-            return res
+            def filter_invalid_mask(mp):
+                res = mp
+                m = load_mask(mp)
+                h, w = m.shape
+                n_px = m.sum()
+                if n_px < h * w * 0.05 or n_px > h * w * 0.9:
+                    res = None
+                return res
 
-        valid_paths = wrap_with_futures(mask_paths, filter_invalid_mask, disable_tqdm=True)
+            valid_paths = wrap_with_futures(mask_paths, filter_invalid_mask, disable_tqdm=True)
         mask_frame_names = set(Path(p).stem for p in valid_paths)
         target_idxs = [
             idx
