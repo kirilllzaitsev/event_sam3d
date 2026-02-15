@@ -22,6 +22,8 @@ from event_sam3d.config import (
     CO3D_OBJECTS,
     IS_CLUSTER,
     MVSEC_SCENES,
+    OBJ_DIR,
+    OBJ_OBJECTS,
     PROJ_DIR,
     RELATED_DIR,
     REPLICA_SCENES,
@@ -30,6 +32,7 @@ from event_sam3d.datasets.co3d_ds import CO3DDataset
 from event_sam3d.datasets.ereplica_ds import EventReplicaDataset
 from event_sam3d.datasets.ie_dataset import IEDataset
 from event_sam3d.datasets.mvsec_ds import MVSECDataset
+from event_sam3d.datasets.obj_ds import ObjDataset
 from event_sam3d.datasets.rgbe_ds import RGBEDataset
 from event_sam3d.datasets.transforms import Transform
 from event_sam3d.img2event.model import TeacherStudent, TeacherStudentReconstruction
@@ -145,6 +148,27 @@ def build_datasets(cfg, rank=0):
 
         for obj in obj_names_val_unseen:
             val_ds_names.extend([f"{obj}/{n}" for n in meta[obj][:5]])
+    elif cfg.ds_name == "obj":
+        obj_names_val_unseen = ["butterfly", "pot"]
+        obj_names_val_seen = ["spider", "hat", "apple", "guitar", "fork"]
+        if obj_names is None:
+            obj_names = OBJ_OBJECTS
+        obj_names = [obj for obj in obj_names if obj not in obj_names_val_unseen]
+        meta = json.load(open(f"{OBJ_DIR}/meta.json"))
+        train_ds_names = []
+        val_ds_names = []
+        for obj in obj_names:
+            seq_names = meta[obj][:4]
+            if obj == "chair":
+                seq_names = [n for n in seq_names if "127_14753_30079" not in n]
+            if obj in obj_names_val_seen:
+                train_ds_names.extend([f"{obj}/{n}" for n in seq_names[:3]])
+                val_ds_names.extend([f"{obj}/{n}" for n in seq_names[3:]])
+            else:
+                train_ds_names.extend([f"{obj}/{n}" for n in seq_names])
+
+        for obj in obj_names_val_unseen:
+            val_ds_names.extend([f"{obj}/{n}" for n in meta[obj][:2]])
 
     elif cfg.ds_name == "ereplica":
         val_ds_names = ["room2"]
@@ -181,6 +205,10 @@ def build_datasets(cfg, rank=0):
         ds_cls = CO3DDataset
         transform_names += ["resize"]
         resize_hw = (260, 346)
+    elif cfg.ds_name == "obj":
+        ds_cls = ObjDataset
+        transform_names += ["resize"]
+        resize_hw = (260, 346)
     else:
         ds_cls = RGBEDataset
 
@@ -188,7 +216,7 @@ def build_datasets(cfg, rank=0):
         transform = Transform(names=transform_names, resize_hw=resize_hw)
     else:
         transform = None
-    if cfg.ds_name == "co3d":
+    if cfg.ds_name in ["co3d", "obj"]:
         transform_val = Transform(names=["resize"], resize_hw=resize_hw)
     else:
         transform_val = None
@@ -209,14 +237,14 @@ def build_datasets(cfg, rank=0):
                     use_blurry_rgb=cfg.use_blurry_rgb,
                 )
             )
-        if cfg.ds_name == "co3d":
+        if cfg.ds_name in ["co3d", "obj"]:
             filenames = [n for n in train_ds_names if n.startswith(f"{obj_name}/")]
             filenames_val = [n for n in val_ds_names if n.startswith(f"{obj_name}/")]
         else:
             filenames = train_ds_names
             filenames_val = val_ds_names
         for filename in filenames:
-            if cfg.ds_name in ["mvsec", "ereplica", "co3d"]:
+            if cfg.ds_name in ["mvsec", "ereplica", "co3d", "obj"]:
                 other_kwargs = dict(
                     seq_name=filename,
                 )
@@ -230,7 +258,7 @@ def build_datasets(cfg, rank=0):
             if len(dataset) > 0:
                 train_datasets[f"{obj_name}_{filename}"] = dataset
         for filename in filenames_val:
-            if cfg.ds_name in ["mvsec", "ereplica", "co3d"]:
+            if cfg.ds_name in ["mvsec", "ereplica", "co3d", "obj"]:
                 other_kwargs = dict(
                     seq_name=filename,
                 )
@@ -844,7 +872,9 @@ def get_arg_parser():
     data_args.add_argument("--use_blurry_rgb", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
     data_args.add_argument(
-        "--ds_name", default="mvsec", choices=["mvsec", "rgbe", "ereplica", "co3d"]
+        "--ds_name",
+        default="mvsec",
+        choices=["mvsec", "rgbe", "ereplica", "co3d", "obj"],
     )
 
     pipe_args = p.add_argument_group("pipeline")
