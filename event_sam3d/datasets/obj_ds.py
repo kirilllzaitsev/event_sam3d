@@ -66,10 +66,11 @@ class ObjDataset:
         self.obj_name = seq_name.split("/")[0]
 
         self.input_folder = Path(self.root) / f"{self.seq_name}"
+        self.img_dirname = "images"
         self.num_frames_skipped = 1
-        self.rgb_paths = get_ordered_paths(f"{self.input_folder}/images/*.png")[
-            self.num_frames_skipped :
-        ]
+        self.rgb_paths = get_ordered_paths(
+            f"{self.input_folder}/{self.img_dirname}/*.png"
+        )[self.num_frames_skipped :]
         if use_vg_event_repr:
             self.vg = Tencode(height=self.hw[0], width=self.hw[1])
             self.reader = AEDat2Reader(
@@ -90,6 +91,22 @@ class ObjDataset:
             self.filter_by_obj_name(use_masks=True)
         if use_sam3d:
             self.filter_by_obj_name(use_masks=False)
+
+        if blur_severity is not None:
+            # take only imgs whose frame_name is in images_blur_{blur_severity}/
+            blur_frame_names = [
+                Path(p).stem
+                for p in get_ordered_paths(
+                    f"{self.input_folder}/images_blur_{blur_severity}/*.png"
+                )
+            ]
+            target_idxs = [
+                idx
+                for idx, p in enumerate(self.rgb_paths)
+                if Path(p).stem in blur_frame_names
+            ]
+            self.rgb_paths = [self.rgb_paths[i] for i in target_idxs]
+            self.img_timestamps = self.img_timestamps[target_idxs]
         self.num_frames = len(self.rgb_paths)
         if len_limit is not None:
             self.num_frames = min(self.num_frames, len_limit)
