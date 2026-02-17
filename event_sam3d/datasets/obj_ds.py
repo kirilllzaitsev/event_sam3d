@@ -6,7 +6,7 @@ import numpy as np
 
 from event_sam3d.config import OBJ_DIR, RELATED_DIR
 from event_sam3d.nb_utils_static import wrap_with_futures
-from event_sam3d.utils.common_utils import cast_to_torch
+from event_sam3d.utils.common_utils import adjust_img_for_plt, cast_to_torch
 from event_sam3d.utils.data_utils import (
     get_sam3d_path_from_rgb,
     load_sam3_res,
@@ -38,6 +38,7 @@ class ObjDataset:
         min_num_events=500,
         use_blurry_rgb=False,
         input_frame_rate=30,
+        blur_severity=None,
         **kwargs,
     ):
         sys.path.insert(0, f"{RELATED_DIR}/data/v2e")
@@ -52,6 +53,7 @@ class ObjDataset:
         self.len_limit = len_limit
         self.transform = transform
         self.min_num_events = min_num_events
+        self.blur_severity = blur_severity
 
         self.use_masks = use_masks
         self.use_sam3_masks = use_sam3_masks
@@ -115,40 +117,35 @@ class ObjDataset:
         mask_paths = []
         subdir = "masks" if use_masks else "sam3d_sparse"
         for p in self.rgb_paths:
-            mp = p.replace("images/", f"{subdir}/").replace(
+            mp = p.replace(f"{self.img_dirname}/", f"{subdir}/").replace(
                 ".png", ".png" if use_masks else ".pt"
             )
             if os.path.exists(mp) and use_masks:
                 mask_paths.append(mp)
+        valid_paths = []
+
+        def filter_invalid_mask(mp):
+            m = load_mask(mp)
+            return is_mask_valid(m)
+
+        valid = wrap_with_futures(mask_paths, filter_invalid_mask, disable_tqdm=True)
+
         if self.use_event_masks:
+
             def filter_invalid_mask(index):
-                ts=self.img_timestamps[index]
+                ts = self.img_timestamps[index]
                 events = self.reader.get_event_window_fast(
                     ts, self.half_event_window_us / 1e6, "xytp"
                 )
                 return len(events) > 400
-            valid=wrap_with_futures(list(range(len(mask_paths))), filter_invalid_mask, disable_tqdm=True)
-            valid_paths = [p for i,p in enumerate(mask_paths) if valid[i]]
-        else:
-            subdir = "masks" if use_masks else "sam3d_sparse"
-            for p in self.rgb_paths:
-                mp = p.replace("images/", f"{subdir}/").replace(
-                    ".png", ".png" if use_masks else ".pt"
-                )
-                if os.path.exists(mp) and use_masks:
-                    mask_paths.append(mp)
-            valid_paths = []
 
-            def filter_invalid_mask(mp):
-                res = mp
-                m = load_mask(mp)
-                h, w = m.shape
-                n_px = m.sum()
-                if n_px < h * w * 0.05 or n_px > h * w * 0.9:
-                    res = None
-                return res
+            valid_e = wrap_with_futures(
+                list(range(len(mask_paths))), filter_invalid_mask, disable_tqdm=True
+            )
+            valid = [vm and ve for vm, ve in zip(valid, valid_e)]
 
-            valid_paths = wrap_with_futures(mask_paths, filter_invalid_mask, disable_tqdm=True)
+        valid_paths = [mp for mp, valid in zip(mask_paths, valid) if valid]
+
         mask_frame_names = set(Path(p).stem for p in valid_paths)
         target_idxs = [
             idx
@@ -194,15 +191,15 @@ class ObjDataset:
         if self.use_masks:
             use_orig_mask = not self.use_sam3_masks
             if self.use_sam3_masks:
-                sam3_res_path = rgb_path.replace("images/", "sam3/").replace(
-                    ".png", ".pt"
-                )
+                sam3_res_path = rgb_path.replace(
+                    f"{self.img_dirname}/", "sam3/"
+                ).replace(".png", ".pt")
                 if os.path.exists(sam3_res_path):
                     mask = load_sam3_res(sam3_res_path)
                 else:
                     use_orig_mask = True
             if use_orig_mask:
-                mask_path = rgb_path.replace("images/", "masks/").replace(
+                mask_path = rgb_path.replace(f"{self.img_dirname}/", "masks/").replace(
                     ".png", ".png"
                 )
                 mask = load_mask(mask_path)
@@ -221,9 +218,17 @@ class ObjDataset:
                 t=cast_to_torch(events[:, 2]),
                 p=cast_to_torch(events[:, 3]),
             )
-            event_repr = self.vg.to_rgb_mono(event_repr)
+            event_repr=adjust_img_for_plt(event_repr)
+            # event_repr = self.vg.to_rgb_mono(event_repr)
             sample["events"] = event_repr
         if self.transform is not None:
             sample = self.transform(sample)
 
         return sample
+
+
+def is_mask_valid(m):
+    h, w = m.shape
+    n_px = m.sum()
+    is_mask_valid = not (n_px < h * w * 0.05 or n_px > h * w * 0.9)
+    return is_mask_valid
