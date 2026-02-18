@@ -61,8 +61,8 @@ class ObjDataset:
         self.use_sam3d = use_sam3d
         self.use_vg_event_repr = use_vg_event_repr
         self.include_only_if_enough_events = include_only_if_enough_events
-        self.use_blurry_rgb = use_blurry_rgb
 
+        self.use_blurry_rgb = use_blurry_rgb or blur_severity is not None
         self.hw = (height, width)
         self.half_event_window_us = (event_window_ms // 2) * 1e3
         self.obj_name = seq_name.split("/")[0]
@@ -95,6 +95,7 @@ class ObjDataset:
             self.filter_by_obj_name(use_masks=False)
 
         if blur_severity is not None:
+            assert self.use_blurry_rgb
             # take only imgs whose frame_name is in images_blur_{blur_severity}/
             blur_frame_names = [
                 Path(p).stem
@@ -171,15 +172,17 @@ class ObjDataset:
 
     def __getitem__(self, index):
         rgb_path = self.rgb_paths[index]
-        # sharp_image_path = rgb_path.replace("original_images", "sharp_images")
-        event_path = (
-            Path(rgb_path).parents[1]
-            / "event"
-            / rgb_path.split("/")[-1].replace(".png", ".npz")
-        )
-        rgb = load_color(rgb_path)
-        # rgb_clean = load_color(sharp_image_path)
-        rgb_clean = rgb.copy()
+        if self.blur_severity is None:
+            rgb = load_color(rgb_path)
+            rgb_clean = rgb.copy()
+        else:
+            rgb = load_color(
+                rgb_path.replace(
+                    f"{self.img_dirname}/", f"images_blur_{self.blur_severity}/"
+                )
+            )
+            rgb_clean = load_color(rgb_path)
+
         ts = self.img_timestamps[index]
         sample = {
             "rgb": rgb if self.use_blurry_rgb else rgb_clean,
@@ -218,8 +221,7 @@ class ObjDataset:
                 t=cast_to_torch(events[:, 2]),
                 p=cast_to_torch(events[:, 3]),
             )
-            event_repr=adjust_img_for_plt(event_repr)
-            # event_repr = self.vg.to_rgb_mono(event_repr)
+            event_repr = adjust_img_for_plt(event_repr)
             sample["events"] = event_repr
         if self.transform is not None:
             sample = self.transform(sample)
@@ -230,5 +232,5 @@ class ObjDataset:
 def is_mask_valid(m):
     h, w = m.shape
     n_px = m.sum()
-    is_mask_valid = not (n_px < h * w * 0.05 or n_px > h * w * 0.9)
+    is_mask_valid = not (n_px < h * w * 0.01 or n_px > h * w * 0.9)
     return is_mask_valid
