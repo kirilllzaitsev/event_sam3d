@@ -172,7 +172,7 @@ class CO3DDataset:
                 mask = load_mask(mask_path)
             sample["mask"] = mask.astype(np.uint8)
         if self.use_sam3d:
-            sam3d_res_path = get_sam3d_path_from_rgb(rgb_path, self.obj_name)
+            sam3d_res_path = rgb_path.replace("images/", "sam3d_sparse/").replace(".jpg", ".pt")
             sam3d_res = load_sam3d_res(sam3d_res_path)
             sample["t"] = sam3d_res
         if self.use_vg_event_repr:

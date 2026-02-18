@@ -4,6 +4,8 @@ from event_sam3d.utils.common_utils import detach_and_cpu
 
 
 def save_sam3d_sparse_pred(save_path, output):
+    pts_key = 'ss' if 'ss' in output else 'voxel'
+    assert pts_key in output
     torch.save(
         {
             k: v
@@ -16,7 +18,7 @@ def save_sam3d_sparse_pred(save_path, output):
                 "shape",
                 "translation",
                 "translation_scale",
-                "ss",
+                pts_key,
             ]
         },
         save_path,
