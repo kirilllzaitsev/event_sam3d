@@ -27,6 +27,7 @@ from event_sam3d.config import (
     PROJ_DIR,
     RELATED_DIR,
     REPLICA_SCENES,
+    WORKSPACE_DIR,
 )
 from event_sam3d.datasets.co3d_ds import CO3DDataset
 from event_sam3d.datasets.ereplica_ds import EventReplicaDataset
@@ -51,6 +52,7 @@ from event_sam3d.img2event.utils import (
 from event_sam3d.utils.common_utils import (
     adjust_depth_for_plt,
     adjust_img_for_plt,
+    cast_to_torch,
     detach_and_cpu,
 )
 from event_sam3d.utils.misc_utils import print_args, set_seed
@@ -150,7 +152,7 @@ def build_datasets(cfg, rank=0):
             val_ds_names.extend([f"{obj}/{n}" for n in meta[obj][:5]])
     elif cfg.ds_name == "obj":
         obj_names_val_unseen = ["butterfly", "pot"]
-        obj_names_val_seen = ["spider", "hat", "apple", "guitar", "fork"]
+        obj_names_val_seen = ["spider", "hat", "apple", "guitar", "laptop_computer"]
         if obj_names is None:
             obj_names = OBJ_OBJECTS
         obj_names = [obj for obj in obj_names if obj not in obj_names_val_unseen]
@@ -235,6 +237,12 @@ def build_datasets(cfg, rank=0):
             common_kwargs.update(
                 dict(
                     use_blurry_rgb=cfg.use_blurry_rgb,
+                )
+            )
+        elif cfg.ds_name == "obj":
+            common_kwargs.update(
+                dict(
+                    blur_severity=cfg.blur_severity,
                 )
             )
         if cfg.ds_name in ["co3d", "obj"]:
@@ -334,7 +342,7 @@ class Trainer:
             }
             if cfg.use_only_shape_loss:
                 self.model_wo_ddp.s.models["ss_generator"].loss_weights = {
-                    k: (0.1 if k in ["shape"] else 0.0)
+                    k: (1 if k in ["shape"] else 0.0)
                     for k in self.model_wo_ddp.s.models["ss_generator"].loss_weights
                 }
 
@@ -348,7 +356,7 @@ class Trainer:
             image=batch["rgb"],
             mask=batch["mask"],
             seed=42,
-            event_image=batch["events"],
+            event_image=cast_to_torch(batch["events"]),
             stage1_inference_steps=1,
         )
         if self.cfg.use_sam3d:
@@ -876,6 +884,7 @@ def get_arg_parser():
     data_args.add_argument("--use_ds_masks", action="store_true")
     data_args.add_argument("--use_blurry_rgb", action="store_true")
     data_args.add_argument("--min_num_events", type=int, default=500)
+    data_args.add_argument("--blur_severity", choices=["easy", "medium", "hard"])
     data_args.add_argument(
         "--ds_name",
         default="mvsec",
