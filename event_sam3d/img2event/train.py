@@ -360,7 +360,12 @@ class Trainer:
                 seed=42,
                 event_image=None,
             )
-        results_dict = self.model(s_kwargs=s_kwargs, t_kwargs=t_kwargs)
+        try:
+            results_dict = self.model(s_kwargs=s_kwargs, t_kwargs=t_kwargs)
+        except Exception as e:
+            print(batch)
+            torch.save(batch, f"{WORKSPACE_DIR}/error_batch.pt")
+            raise e
         results_dict["meta"] = {}
 
         return results_dict
