@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 
 from event_sam3d.config import RGBE_DIR
-from event_sam3d.utils.common_utils import cast_to_numpy, cast_to_torch
+from event_sam3d.utils.common_utils import adjust_img_for_plt, cast_to_numpy, cast_to_torch
 from event_sam3d.utils.data_utils import (
     get_sam3d_path_from_rgb,
     load_sam3_res,
@@ -139,7 +139,7 @@ class RGBEDataset(Dataset):
                 t=cast_to_torch(events["t"]),
                 p=cast_to_torch(events["p"]),
             )
-            event_repr = self.vg.to_rgb_mono(event_repr)
+            event_repr = adjust_img_for_plt(event_repr)
             sample["events"] = event_repr
         if self.use_masks:
             sam3_res_path = f'{image_path.replace("rgb_image/", f"sam3/{self.obj_name}_").replace(".jpg", ".pt")}'
