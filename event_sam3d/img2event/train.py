@@ -151,11 +151,23 @@ def build_datasets(cfg, rank=0):
         for obj in obj_names_val_unseen:
             val_ds_names.extend([f"{obj}/{n}" for n in meta[obj][:5]])
     elif cfg.ds_name == "obj":
-        obj_names_val_unseen = ["butterfly", "pot"]
-        obj_names_val_seen = ["spider", "hat", "apple", "guitar", "laptop_computer"]
+        obj_names_val_unseen = ["butterfly", "pot", "zucchini"]
+        obj_names_val_seen = [
+            "spider",
+            "hat",
+            "apple",
+            "guitar",
+            "laptop_computer",
+            "yacht",
+            "wig",
+        ]
         if obj_names is None:
             obj_names = OBJ_OBJECTS
-        obj_names = [obj for obj in obj_names if obj not in obj_names_val_unseen]
+        obj_names = [
+            obj
+            for obj in obj_names
+            if (obj not in obj_names_val_unseen and obj not in ["olive_oil"])
+        ]
         meta = json.load(open(f"{OBJ_DIR}/meta.json"))
         train_ds_names = []
         val_ds_names = []
