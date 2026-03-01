@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from event_sam3d.config import OBJ_DIR, RELATED_DIR
@@ -123,13 +124,8 @@ class ObjDataset:
             )
             if os.path.exists(mp) and use_masks:
                 mask_paths.append(mp)
-        valid_paths = []
 
-        def filter_invalid_mask(mp):
-            m = load_mask(mp)
-            return is_mask_valid(m)
-
-        valid = wrap_with_futures(mask_paths, filter_invalid_mask, disable_tqdm=True)
+        valid = [True for _ in range(len(self.rgb_paths))]
 
         if self.use_event_masks:
 
@@ -138,14 +134,14 @@ class ObjDataset:
                 events = self.reader.get_event_window_fast(
                     ts, self.half_event_window_us / 1e6, "xytp"
                 )
-                return len(events) > 400
+                return len(events) > self.min_num_events
 
             valid_e = wrap_with_futures(
-                list(range(len(mask_paths))), filter_invalid_mask, disable_tqdm=True
+                list(range(len(valid))), filter_invalid_mask, disable_tqdm=True
             )
             valid = [vm and ve for vm, ve in zip(valid, valid_e)]
 
-        valid_paths = [mp for mp, valid in zip(mask_paths, valid) if valid]
+        valid_paths = [mp for mp, valid in zip(self.rgb_paths, valid) if valid]
 
         mask_frame_names = set(Path(p).stem for p in valid_paths)
         target_idxs = [
@@ -202,10 +198,11 @@ class ObjDataset:
                 else:
                     use_orig_mask = True
             if use_orig_mask:
-                mask_path = rgb_path.replace(f"{self.img_dirname}/", "masks/").replace(
-                    ".png", ".png"
+                rgb[np.all(rgb == (26, 26, 26), axis=-1)] = 0
+                mask = np.any(rgb > 0, axis=-1)
+                mask = cv2.morphologyEx(
+                    mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)
                 )
-                mask = load_mask(mask_path)
             sample["mask"] = mask.astype(np.uint8)
         if self.use_sam3d:
             sam3d_res_path = get_sam3d_path_from_rgb(rgb_path, self.obj_name)
