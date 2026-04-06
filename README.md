@@ -99,7 +99,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-Additionally, the following submodules should be installed:
+Additionally, the following submodules should be initialized via `git submodule update --init --recursive` and installed following the instructions there:
 
 - `sam-3d-objects` for the main SAM3D model
 - `objaverse-rendering` for rendering Objaverse objects
