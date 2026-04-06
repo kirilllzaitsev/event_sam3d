@@ -9,10 +9,10 @@ class GatedProjectionFusion(nn.Module):
         self.proj_src = nn.Linear(dim, dim)
         self.proj_tgt = nn.Linear(dim, dim)
         self.gate = nn.Linear(dim * 2, dim)
-        # self.gate.weight.data.zero_()
-        # self.gate.bias.data.zero_()
-        # self.proj_tgt.weight = torch.nn.Parameter(torch.eye(dim))
-        # self.proj_tgt.bias.data.zero_()
+        self.gate.weight.data.zero_()
+        self.gate.bias.data.zero_()
+        self.proj_tgt.weight = torch.nn.Parameter(torch.eye(dim))
+        self.proj_tgt.bias.data.zero_()
 
     def forward(self, src, target):
         """
