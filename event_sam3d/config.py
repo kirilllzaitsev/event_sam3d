@@ -16,7 +16,7 @@ DATA_DIR = (
 )
 EDATA_DIR = DATA_DIR
 CO3D_DIR = DATA_DIR / "co3d"
-OBJ_DIR = DATA_DIR / "objaverse/rendered"
+OBJ_DIR = DATA_DIR / "objaverse/rendered_v2"
 if (DATA_DIR / "event_dataset").exists():
     REPLICA_DIR = DATA_DIR / "event_dataset/Replica_final"
     DEVD_DIR = DATA_DIR / "event_dataset/DEVD" / "DAVIS_DEPTH_SLAM"
@@ -74,57 +74,4 @@ CO3D_OBJECTS = [
     "plant",
 ]
 
-# OBJ_OBJECTS = open(OBJ_DIR / "obj_names.txt").read().splitlines()
-OBJ_OBJECTS = [
-    "alligator",
-    "bear",
-    "butterfly",
-    "dolphin",
-    "eagle",
-    "elephant",
-    "frog",
-    "giraffe",
-    "octopus_(animal)",
-    "penguin",
-    "shark",
-    "spider",
-    "snake",
-    "zebra",
-    "airplane",
-    "bicycle",
-    "bulldozer",
-    "helicopter",
-    "motorcycle",
-    "yacht",
-    "apple",
-    "bagel",
-    "broccoli",
-    "hamburger",
-    "pizza",
-    "sushi",
-    "watermelon",
-    "armchair",
-    "bed",
-    "desk",
-    "hat",
-    "jacket",
-    "shoe",
-    "sunglasses",
-    "sword",
-    "camera",
-    "laptop_computer",
-    "microphone",
-    "television_set",
-    "basketball",
-    "skateboard",
-    "surfboard",
-    "drum_(musical_instrument)",
-    "guitar",
-    "piano",
-    "hammer",
-    "scissors",
-    "wrench",
-    "fork",
-    "pot",
-    "toaster",
-]
+OBJ_OBJECTS = open(OBJ_DIR / "obj_names.txt").read().splitlines()
