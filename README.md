@@ -101,13 +101,11 @@ pip install -e .
 
 Additionally, the following submodules should be installed:
 
-- sam3d_objects for the main SAM3D model
-- uni3d for evaluation
-- objaverse-rendering for rendering Objaverse objects
+- `sam-3d-objects` for the main SAM3D model
+- `objaverse-rendering` for rendering Objaverse objects
 
-**Third-party checkpoints:**
+**Additional third-party packages:**
 
-- [SAM3D](https://github.com/facebookresearch/sam-3d-objects)
 - [V2E](https://github.com/SensorsINI/v2e?tab=readme-ov-file) for synthetic event generation [5]
 - [Uni3D](https://github.com/baaivision/Uni3D) for 3D similarity evaluation
 
