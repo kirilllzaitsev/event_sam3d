@@ -1,0 +1,6 @@
+[submodule "sam-3d-objects"]
+	path = sam-3d-objects
+	url = https://github.com/kirilllzaitsev/sam-3d-objects
+[submodule "objaverse-rendering"]
+	path = objaverse-rendering
+	url = https://github.com/kirilllzaitsev/objaverse-rendering
