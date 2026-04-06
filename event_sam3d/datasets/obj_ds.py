@@ -226,6 +226,134 @@ class ObjDataset:
         return sample
 
 
+class ObjBlurSharpEventDataset:
+    """Dataset yielding (blurry, sharp, events) triplets from OBJ sequences.
+
+    blurry  – pixel-wise mean of `blur_window` consecutive frames
+    sharp   – center frame of that window
+    events  – voxel-grid encoded events in a `event_window_ms` window
+               centered on the sharp frame's timestamp
+
+    Windows start at 0, blur_step, 2*blur_step, … (default blur_step = blur_window // 2).
+    Windows whose center frame has fewer than `min_num_events` are dropped.
+    """
+
+    def __init__(
+        self,
+        seq_name,
+        root=OBJ_DIR,
+        height=260,
+        width=346,
+        event_window_ms=100,
+        blur_window=20,
+        blur_step=None,
+        nr_temporal_bins=5,
+        transform=None,
+        input_frame_rate=30,
+        min_num_events=500,
+        len_limit=None,
+        **kwargs,
+    ):
+        sys.path.insert(0, f"{RELATED_DIR}/data/v2e")
+        from v2ecore.data_utils.aedat2_reader import AEDat2Reader
+
+        self.seq_name = seq_name
+        self.root = root
+        self.height = height
+        self.width = width
+        self.hw = (height, width)
+        self.nr_temporal_bins = nr_temporal_bins
+        self.transform = transform
+        self.blur_window = blur_window
+        self.half_blur = blur_window // 2
+        self.half_event_window_us = (event_window_ms / 2) * 1e3
+        self.min_num_events = min_num_events
+
+        self.input_folder = Path(self.root) / seq_name
+        self.img_dirname = "images"
+        num_frames_skipped = 1
+        all_rgb_paths = get_ordered_paths(
+            f"{self.input_folder}/{self.img_dirname}/*.png"
+        )[num_frames_skipped:]
+
+        num_all = len(all_rgb_paths)
+        self.all_rgb_paths = all_rgb_paths
+        self.all_timestamps = (
+            np.arange(num_frames_skipped, num_all + num_frames_skipped, dtype=np.float64)
+            / input_frame_rate
+        )
+
+        self.vg = Tencode(height=self.hw[0], width=self.hw[1])
+        self.reader = AEDat2Reader(
+            f"{self.input_folder}/events.aedat", auto_detect_size=False
+        )
+        self.reader.set_sensor_size(width=width, height=height)
+        self.reader.load_timestamps_us()
+
+        step = blur_step if blur_step is not None else blur_window // 2
+        candidate_starts = range(0, max(0, num_all - blur_window + 1), step)
+        self.valid_starts = [
+            s
+            for s in candidate_starts
+            if len(
+                self.reader.get_event_window_fast(
+                    self.all_timestamps[s + self.half_blur],
+                    self.half_event_window_us / 1e6,
+                    "xytp",
+                )
+            )
+            >= min_num_events
+        ]
+        if len_limit is not None:
+            self.valid_starts = self.valid_starts[:len_limit]
+        self.num_frames = len(self.valid_starts)
+
+    def __len__(self):
+        return self.num_frames
+
+    def __repr__(self):
+        return print_cls(
+            self,
+            excluded_attrs=["all_rgb_paths", "all_timestamps", "valid_starts"],
+            extra_str=f"{self.num_frames=}",
+        )
+
+    def __getitem__(self, index):
+        start = self.valid_starts[index]
+        frame_paths = self.all_rgb_paths[start : start + self.blur_window]
+        sharp_path = frame_paths[self.half_blur]
+        sharp_ts = self.all_timestamps[start + self.half_blur]
+
+        frames = np.stack([load_color(p) for p in frame_paths], axis=0)
+        blurry = frames.mean(axis=0).astype(np.uint8)
+        sharp = frames[self.half_blur]
+
+        events = self.reader.get_event_window_fast(
+            sharp_ts, self.half_event_window_us / 1e6, "xytp"
+        )
+        event_repr = self.vg.convert(
+            x=cast_to_torch(events[:, 0]),
+            y=cast_to_torch(events[:, 1]),
+            t=cast_to_torch(events[:, 2]),
+            p=cast_to_torch(events[:, 3]),
+        )
+        event_repr = adjust_img_for_plt(event_repr)
+
+        sample = {
+            "blurry": blurry,
+            "sharp": sharp,
+            "events": event_repr,
+            "sharp_path": sharp_path,
+            "frame_name": Path(sharp_path).stem,
+            "ts": sharp_ts,
+        }
+
+        if self.transform is not None:
+            sample = self.transform(sample)
+
+        return sample
+
+
 def is_mask_valid(m):
     h, w = m.shape
     n_px = m.sum()
