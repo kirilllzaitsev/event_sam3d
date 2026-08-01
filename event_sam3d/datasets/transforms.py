@@ -79,13 +79,9 @@ class Transform:
             mask = cv2.dilate(
                 mask.astype(np.uint8), np.ones((11, 11), np.uint8), iterations=1
             ).astype(bool)
-            mask_orig = mask.copy()
-            mask2 = mask.copy()
             for k in target_keys:
                 if k in sample:
-                    sample[f"{k}_before"] = sample[k].copy()
-                    sample[k] = get_crop_from_mask(sample[k], mask2)
-                    sample[f"{k}_mask"] = mask2
+                    sample[k] = get_crop_from_mask(sample[k], mask)
         if "random_crop" in self.names and np.random.rand() < self.probs["random_crop"]:
             h, w, _ = sample["rgb"].shape
             n = self.crop_size
