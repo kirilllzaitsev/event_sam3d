@@ -106,7 +106,7 @@ event_sam3d/
 | Event Replica | Synthetic (V2E) | Replica | 7 indoor scenes |
 | RGBE-SEG | Real | RGBE-SEG | Multiple scenes, 66K images in total |
 
-Dataset paths and scene lists are configured in [event_sam3d/config.py](event_sam3d/config.py).
+Dataset paths and scene lists are configured in [event_sam3d/config.py](event_sam3d/config.py). To generate synthetic datasets, refer to the [Synthesis of event data from RGB frames](#synthesis-of-event-data-from-rgb-frames) section below.
 
 ## Installation
 
@@ -124,15 +124,20 @@ Additionally, the following submodules should be initialized via `git submodule 
 
 **Additional third-party packages:**
 
-- [V2E](https://github.com/SensorsINI/v2e?tab=readme-ov-file) for synthetic event generation [5]
+- [V2E](https://github.com/kirilllzaitsev/v2e) for synthetic event generation [5]
 - [Uni3D](https://github.com/baaivision/Uni3D) for 3D similarity evaluation
 
-## Synthetis of event data from renderings
+## Synthesis of event data from RGB frames
 
-[V2E](https://github.com/SensorsINI/v2e?tab=readme-ov-file) is a recent SOTA in synthetic event generation. After rendering frames using the `objaverse-rendering` package referenced in this repository, execute the command below, targeting a single directory with rendered frames:
+Before generating events, you need to create a dataset with renderings of objects from Objaverse by following the instructions in the `objaverse-rendering` package referenced in this repository.
+
+[V2E](https://github.com/SensorsINI/v2e) is a recent SOTA in synthetic event generation. You can navigate to the `v2e` package and either:
+
+- execute `run_v2e.py` script for a given dataset and a set of objects
+- execute the following command, targeting a single directory with rendered frames:
 
 ```
-src_dir=fill/in
+src_dir=dir/with/rendered/images
 python v2e.py -i ${src_dir}/images --overwrite --timestamp_resolution=.003 --auto_timestamp_resolution=True --dvs_exposure duration 0.005 --output_folder ${src_dir} --pos_thres=.2 --neg_thres=.2 --sigma_thres=0.03 --dvs_aedat2 events.aedat --output_width=346 --output_height=260 --cutoff_hz=15 --input_frame_rate=30 --no_preview --skip_video_output
 ```
 
