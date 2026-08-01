@@ -62,7 +62,7 @@ class Transform:
         self.resize_hw = resize_hw
         self.probs = {n: 0.5 for n in names} if probs is None else probs
 
-        if 'resize' in names:
+        if "resize" in names:
             assert resize_hw is not None
 
     def __call__(self, sample):
@@ -72,14 +72,20 @@ class Transform:
                 if k in sample:
                     sample[k] = horizontal_flip(sample[k])
         if "obj_crop" in self.names:
-            mask = sample['mask']
+            mask = sample["mask"]
+            mask = cv2.erode(
+                mask.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=1
+            ).astype(bool)
+            mask = cv2.dilate(
+                mask.astype(np.uint8), np.ones((11, 11), np.uint8), iterations=1
+            ).astype(bool)
+            mask_orig = mask.copy()
+            mask2 = mask.copy()
             for k in target_keys:
-                if k in sample and k != "mask":
-                    mask2=mask.copy()
-                    if k == 'events':
-                        mask2 = cv2.resize(mask2, (self.resize_hw[1], self.resize_hw[0]))
-                    mask2 = cv2.dilate(mask2.astype(np.uint8), np.ones((11,11), np.uint8), iterations=1).astype(bool)
+                if k in sample:
+                    sample[f"{k}_before"] = sample[k].copy()
                     sample[k] = get_crop_from_mask(sample[k], mask2)
+                    sample[f"{k}_mask"] = mask2
         if "random_crop" in self.names and np.random.rand() < self.probs["random_crop"]:
             h, w, _ = sample["rgb"].shape
             n = self.crop_size
@@ -126,11 +132,11 @@ class Transform:
             sample["rgb"] = motion_blur(sample["rgb"], ksize=ksize)
         if "wavelet" in self.names:
             rgb_feat = adjust_img_for_torch(sample["rgb"])
-            wv_levels = np.random.randint(
-                self.wv_levels_min, self.wv_levels_max + 1
-            )
+            wv_levels = np.random.randint(self.wv_levels_min, self.wv_levels_max + 1)
             if wv_levels > 0:
-                rgb_high_freq, rgb_low_freq = wavelet_decomposition(rgb_feat, levels=wv_levels)
+                rgb_high_freq, rgb_low_freq = wavelet_decomposition(
+                    rgb_feat, levels=wv_levels
+                )
                 event_feat = adjust_img_for_torch(sample["events"])
                 event_high_freq, event_low_freq = wavelet_decomposition(
                     event_feat, levels=wv_levels
