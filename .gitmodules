@@ -4,3 +4,6 @@
 [submodule "objaverse-rendering"]
 	path = objaverse-rendering
 	url = https://github.com/kirilllzaitsev/objaverse-rendering
+[submodule "v2e"]
+	path = v2e
+	url = https://github.com/kirilllzaitsev/v2e
