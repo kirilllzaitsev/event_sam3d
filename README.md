@@ -2,7 +2,25 @@
 
 ## Introduction
 
-SOTA 3D object reconstruction models [1] operate on sharp RGB images and struggle with motion blur [2]. Event cameras are largely blur-free and respond to brightness changes in microsecond resolution. However, the SOTA in 3D reconstruction is built around RGB inputs, and adapting these models to event data is non-trivial due to the scarcity of labeled event data and the absence of established training pipelines.
+SOTA 3D object reconstruction models [1] operate on sharp RGB images and struggle with motion blur [2]. In the example below, SAM3D [1] perfectly reconstructs the objects in the sharp RGB and fails with the details in the blurred RGB:
+
+<tr>
+<td align="center" colspan="2">
+<h4>Reconstruction of selected objects on a sharp (left) and blurred (right) samples from the EventReplica dataset that motivates the development of a blur-aware SAM3D</h4>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="assets/intro/rgb_sharp.jpg" width="640">
+</td>
+<td align="center">
+<img src="assets/intro/rgb_blurry.jpg" width="640">
+</td>
+</tr>
+
+The primary sources of the drop in reconstruction performance are blurred object masks provided by SAM3 and perceptual complexity of the corresponding image region that results in less representative image features. The generative model is unable to produce a sharp reconstruction if the input latents it receives from the feature extractors are misleading and insufficent. Therefore, we are seeking a solution that can correct and enhance these features due to its robustness to blur.
+
+Event cameras are largely blur-free and respond to brightness changes in microsecond resolution. However, the SOTA in 3D reconstruction is built around RGB inputs, and adapting these models to event data is non-trivial due to the scarcity of labeled event data and the absence of established training pipelines.
 
 This project investigates extension of SAM3D to handle a new modality: event image. We train the model in two stages. First, we learn reconstruction of RGB features from events [3]. Freezing the trained encoder in the second stage, we train a fusion module on (blurry RGB, sharp RGB, event image) triplets, asking the model to match object reconstruction from a sharp RGB given a blurry RGB and an event image.
 
@@ -115,10 +133,43 @@ Additionally, the following submodules should be initialized via `git submodule 
 
 ```
 src_dir=fill/in
-python v2e.py -i ${src_dir}/images --overwrite --timestamp_resolution=.003 --auto_timestamp_resolution=True --dvs_exposure duration 0.005 --output_folder ${src_dir} --pos_thres=.2 --neg_thres=.2 --sigma_thres=0.03 --dvs_aedat2 events.aedat --output_width=346 --output_height=260 --cutoff_hz=15 --input_frame_rate=30 --no_preview
+python v2e.py -i ${src_dir}/images --overwrite --timestamp_resolution=.003 --auto_timestamp_resolution=True --dvs_exposure duration 0.005 --output_folder ${src_dir} --pos_thres=.2 --neg_thres=.2 --sigma_thres=0.03 --dvs_aedat2 events.aedat --output_width=346 --output_height=260 --cutoff_hz=15 --input_frame_rate=30 --no_preview --skip_video_output
 ```
 
 The script will save an `events.aedat` file that can be parsed via the `event_sam3d/datasets/obj_ds.py`.
+
+Sample visualizations of synthetic events are shown below:
+
+<tr>
+<td align="center" colspan="2">
+<h4>Training (top) and validation (bottom) batches from the synthetic event dataset with Objaverse objects, with number of events indicated by the top-left image caption</h4>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="assets/ds_vis/train_sample.jpg" width="640">
+</td>
+<td align="center">
+<img src="assets/ds_vis/val_sample.jpg" width="640">
+</td>
+</tr>
+
+<tr>
+<td align="center" colspan="2">
+<h4>Synthetically generated events for three Objaverse objects</h4>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="assets/ds_vis/vase.gif" width="640">
+</td>
+<td align="center">
+<img src="assets/ds_vis/ladybug.gif" width="640">
+</td>
+<td align="center">
+<img src="assets/ds_vis/giraffe.gif" width="640">
+</td>
+</tr>
 
 ## Training
 
@@ -157,9 +208,102 @@ Evaluation metrics are implemented in [event_sam3d/utils/eval_metrics.py](event_
 | Volume IoU (vIoU) | Volumetric intersection-over-union for 3D shapes |
 | Uni3D Similarity [6] | CLIP-based 3D object similarity score |
 
-## Results
+For evaluation on synthetic benchmarks, we generate blurry RGB frames by averaging 10, 20, and 40 frames that correspond to the easy, medium, and hard reconstruction complexity.
 
-#TBD
+<tr>
+<td align="center" colspan="2">
+<h4>(Blurry RGB, Sharp RGB, Event image) triplets for validation. The blurry RGB is obtained by averaging 40 subsequent sharp frames</h4>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="assets/eval_data/sample1_40.jpg" width="640">
+</td>
+<td align="center">
+<img src="assets/eval_data/sample2_40.jpg" width="640">
+</td>
+</tr>
+
+## Qualitative results
+
+Event-SAM3D shows promising results in terms of preserving the details despite blur.
+
+The following shows two prediction pairs from the validation split of the MVSEC dataset. Each pair consists of predictions from our model (left) and original SAM3D (right). Reconstructions from our model closely resemble the actual object with respect to the texture detail.
+
+<tr>
+<td align="center">
+<img src="assets/results1/mvsec_barrel.png" width="640">
+</td>
+</tr>
+
+The following input was used for the second pair of reconstructions:
+
+<tr>
+<td align="center" colspan="2">
+<h4>A sample input with a triplets (RGB, event image, mask) at full resolution and an object-centric crop</h4>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="assets/results1/mvsec_barrel_input.png" width="640">
+</td>
+<td align="center">
+<img src="assets/results1/mvsec_barrel_input_crop.png" width="640">
+</td>
+</tr>
+
+In a more complicated case from the synthetic Objaverse benchmark, the model is able to reconstruct details for the large parts of an object while displaying volatility in smaller details:
+
+<tr>
+<td align="center" colspan="2">
+<h4>A sample of (Sharp RGB, blurry RGB (used as input), final reconstruction) triplets from Objaverse </h4>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="assets/results1/spider_easy.jpg" width="640">
+</td>
+<td align="center">
+<img src="assets/results1/spider_medium.jpg" width="640">
+</td>
+<td align="center">
+<img src="assets/results1/spider_hard.jpg" width="640">
+</td>
+</tr>
+
+### Attention maps
+
+To analyze representations learned by the event encoder that was trained on the RGBE dataset, we visualize its learned attention maps on a few images from the validation set and compare them to those of the original RGB encoder.
+
+For RGBE validation set, the attention of the event encoder shows meaningful patterns:
+
+<tr>
+<td align="center">
+<img src="assets/attn_vis/sample1.png" width="640">
+</td>
+<td align="center">
+<img src="assets/attn_vis/sample2.png" width="640">
+</td>
+</tr>
+
+At the same time, when the model is used for inference on the Objaverse validation set, the event encoder fails to extract features from a limited set of events:
+
+<tr>
+<td align="center">
+<img src="assets/attn_vis/sample1.png" width="640">
+</td>
+<td align="center">
+<img src="assets/attn_vis/sample2.png" width="640">
+</td>
+</tr>
+
+This indicates sensitivity of the event encoder to the spatial distribution of events, and its expected variations should be covered by the training dataset.
+
+## Conclusion
+
+The primary limitation of this approach is the dependence on informative event streams. Objects of a small size or with a limited texture or a color that blends with the background may fail to generate sufficient number of events. Events should be captured at sufficiently high quality and at high temporal resolution in order to convert them to event images with sharp object edges.
+
+To train a generalizable event encoder, one needs to generate a large synthetic dataset with highly varied events. The number and quality of events, alongside their spatial positioning should be subject to strong randomization.
 
 ## Rendering Pipeline
 
