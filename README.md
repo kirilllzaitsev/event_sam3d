@@ -84,7 +84,7 @@ event_sam3d/
 |---------|--------|--------|-----------------|
 | MVSEC | Real | HDF5 | 4 indoor sequences |
 | CO3D | Synthetic (V2E) | CO3D-v2 | 18 object categories |
-| Objaverse-X | Synthetic (V2E) | Objaverse | 1000+ object types, 4 subtypes per object |
+| Objaverse-X | Synthetic (V2E) | Objaverse | 1000+ objects, 4 variants of each object |
 | Event Replica | Synthetic (V2E) | Replica | 7 indoor scenes |
 | RGBE-SEG | Real | RGBE-SEG | Multiple scenes, 66K images in total |
 
@@ -108,6 +108,17 @@ Additionally, the following submodules should be initialized via `git submodule 
 
 - [V2E](https://github.com/SensorsINI/v2e?tab=readme-ov-file) for synthetic event generation [5]
 - [Uni3D](https://github.com/baaivision/Uni3D) for 3D similarity evaluation
+
+## Synthetis of event data from renderings
+
+[V2E](https://github.com/SensorsINI/v2e?tab=readme-ov-file) is a recent SOTA in synthetic event generation. After rendering frames using the `objaverse-rendering` package referenced in this repository, execute the command below, targeting a single directory with rendered frames:
+
+```
+src_dir=fill/in
+python v2e.py -i ${src_dir}/images --overwrite --timestamp_resolution=.003 --auto_timestamp_resolution=True --dvs_exposure duration 0.005 --output_folder ${src_dir} --pos_thres=.2 --neg_thres=.2 --sigma_thres=0.03 --dvs_aedat2 events.aedat --output_width=346 --output_height=260 --cutoff_hz=15 --input_frame_rate=30 --no_preview
+```
+
+The script will save an `events.aedat` file that can be parsed via the `event_sam3d/datasets/obj_ds.py`.
 
 ## Training
 
