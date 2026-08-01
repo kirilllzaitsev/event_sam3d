@@ -2,11 +2,11 @@
 
 ## Introduction
 
-SOTA 3D object reconstruction models [1] operate on sharp RGB images and struggle with motion blur [2]. In the example below, SAM3D [1] perfectly reconstructs the objects in the sharp RGB and fails with the details in the blurred RGB:
+SOTA 3D object reconstruction models [1] operate on sharp RGB images and struggle with motion blur [2]. In the example below, SAM3D [1] perfectly reconstructs the objects in the sharp RGB and fails to capture the details in the blurred RGB:
 
 <tr>
 <td align="center" colspan="2">
-<h4>Reconstruction of selected objects on a sharp (left) and blurred (right) samples from the EventReplica dataset that motivates the development of a blur-aware SAM3D</h4>
+<h4>Reconstruction of selected objects on sharp (left) and blurred (right) samples from the EventReplica dataset that motivates the development of a blur-aware SAM3D</h4>
 </td>
 </tr>
 <tr>
@@ -18,11 +18,11 @@ SOTA 3D object reconstruction models [1] operate on sharp RGB images and struggl
 </td>
 </tr>
 
-The primary sources of the drop in reconstruction performance are blurred object masks provided by SAM3 and perceptual complexity of the corresponding image region that results in less representative image features. The generative model is unable to produce a sharp reconstruction if the input latents it receives from the feature extractors are misleading and insufficent. Therefore, we are seeking a solution that can correct and enhance these features due to its robustness to blur.
+The primary sources of the drop in reconstruction performance are blurred object masks provided by SAM3 and the perceptual complexity of the corresponding image region, which results in less representative image features. The generative model is unable to produce a sharp reconstruction if the input latents it receives from the feature extractors are misleading and insufficient. Therefore, we are seeking a solution that can correct and enhance these features using a modality that is robust to blur.
 
 Event cameras are largely blur-free and respond to brightness changes in microsecond resolution. However, the SOTA in 3D reconstruction is built around RGB inputs, and adapting these models to event data is non-trivial due to the scarcity of labeled event data and the absence of established training pipelines.
 
-This project investigates extension of SAM3D to handle a new modality: event image. We train the model in two stages. First, we learn reconstruction of RGB features from events [3]. Freezing the trained encoder in the second stage, we train a fusion module on (blurry RGB, sharp RGB, event image) triplets, asking the model to match object reconstruction from a sharp RGB given a blurry RGB and an event image.
+This project investigates extending SAM3D to handle a new modality: event images. We train the model in two stages. First, we learn to reconstruct RGB features from events [3]. In the second stage, we freeze the trained encoder and train a fusion module on (blurry RGB, sharp RGB, event image) triplets, asking the model to match object reconstruction from a sharp RGB given a blurry RGB and an event image.
 
 ## System Overview
 
@@ -45,7 +45,7 @@ Our primary fusion strategy is inspired by the cross-attention approach of [4]:
 
 ![Flamingo-like Fusion Between Image and Event Tokens](assets/arch_fusion.png)
 
-Zero-initialization of gating parameters allows to stabilize the fusion, steadily updating original inputs over the course of training while not dramatically changing the original representation.
+Zero-initialization of gating parameters stabilizes the fusion, steadily updating the original inputs over the course of training without dramatically altering the original representation.
 
 Alternative fusion strategies are implemented in [event_sam3d/models/fusion.py](event_sam3d/models/fusion.py):
 
@@ -59,7 +59,7 @@ Fusion modules are injected at configurable transformer block indices (default f
 
 ### Event Representations
 
-Before fusion, event streams are transformed to an image according to either of these strategies:
+Before fusion, event streams are transformed into an image using one of the following strategies:
 
 - **VoxelGrid**: 3D voxel accumulation over a configurable time window
 - **Tencode**: Temporal encoding of events preserving timestamp information
@@ -133,7 +133,7 @@ Before generating events, you need to create a dataset with renderings of object
 
 [V2E](https://github.com/SensorsINI/v2e) is a recent SOTA in synthetic event generation. You can navigate to the `v2e` package and either:
 
-- execute `run_v2e.py` script for a given dataset and a set of objects
+- execute the `run_v2e.py` script for a given dataset and a set of objects
 - execute the following command, targeting a single directory with rendered frames:
 
 ```
@@ -147,7 +147,7 @@ Sample visualizations of synthetic events are shown below:
 
 <tr>
 <td align="center" colspan="2">
-<h4>Training (top) and validation (bottom) batches from the synthetic event dataset with Objaverse objects, with number of events indicated by the top-left image caption</h4>
+<h4>Training (top) and validation (bottom) batches from the synthetic event dataset with Objaverse objects, with the number of events indicated by the top-left image caption</h4>
 </td>
 </tr>
 <tr>
@@ -213,7 +213,7 @@ Evaluation metrics are implemented in [event_sam3d/utils/eval_metrics.py](event_
 | Volume IoU (vIoU) | Volumetric intersection-over-union for 3D shapes |
 | Uni3D Similarity [6] | CLIP-based 3D object similarity score |
 
-For evaluation on synthetic benchmarks, we generate blurry RGB frames by averaging 10, 20, and 40 frames that correspond to the easy, medium, and hard reconstruction complexity.
+For evaluation on synthetic benchmarks, we generate blurry RGB frames by averaging 10, 20, and 40 frames, corresponding to easy, medium, and hard reconstruction complexity, respectively.
 
 <tr>
 <td align="center" colspan="2">
@@ -231,9 +231,9 @@ For evaluation on synthetic benchmarks, we generate blurry RGB frames by averagi
 
 ## Qualitative results
 
-Event-SAM3D shows promising results in terms of preserving the details despite blur.
+Event-SAM3D shows promising results in preserving details despite blur.
 
-The following shows two prediction pairs from the validation split of the MVSEC dataset. Each pair consists of predictions from our model (left) and original SAM3D (right). Reconstructions from our model closely resemble the actual object with respect to the texture detail.
+The following shows two prediction pairs from the validation split of the MVSEC dataset. Each pair consists of predictions from our model (left) and the original SAM3D (right). Reconstructions from our model closely resemble the actual object with respect to texture detail.
 
 <tr>
 <td align="center">
@@ -245,7 +245,7 @@ The following input was used for the second pair of reconstructions:
 
 <tr>
 <td align="center" colspan="2">
-<h4>A sample input with a triplets (RGB, event image, mask) at full resolution and an object-centric crop</h4>
+<h4>A sample input with a triplet (RGB, event image, mask) at full resolution and an object-centric crop</h4>
 </td>
 </tr>
 <tr>
@@ -257,11 +257,11 @@ The following input was used for the second pair of reconstructions:
 </td>
 </tr>
 
-In a more complicated case from the synthetic Objaverse benchmark, the model is able to reconstruct details for the large parts of an object while displaying volatility in smaller details:
+In a more complicated case from the synthetic Objaverse benchmark, the model is able to reconstruct details for large parts of an object while displaying volatility in smaller details:
 
 <tr>
 <td align="center" colspan="2">
-<h4>A sample of (Sharp RGB, blurry RGB (used as input), final reconstruction) triplets from Objaverse </h4>
+<h4>A sample of (Sharp RGB, blurry RGB (used as input), final reconstruction) triplets from Objaverse</h4>
 </td>
 </tr>
 <tr>
@@ -280,7 +280,7 @@ In a more complicated case from the synthetic Objaverse benchmark, the model is 
 
 To analyze representations learned by the event encoder that was trained on the RGBE dataset, we visualize its learned attention maps on a few images from the validation set and compare them to those of the original RGB encoder.
 
-For RGBE validation set, the attention of the event encoder shows meaningful patterns:
+For the RGBE validation set, the attention of the event encoder shows meaningful patterns:
 
 <tr>
 <td align="center">
@@ -302,13 +302,13 @@ At the same time, when the model is used for inference on the Objaverse validati
 </td>
 </tr>
 
-This indicates sensitivity of the event encoder to the spatial distribution of events, and its expected variations should be covered by the training dataset.
+This indicates that the event encoder is sensitive to the spatial distribution of events, and its expected variations should be covered by the training dataset.
 
 ## Conclusion
 
-The primary limitation of this approach is the dependence on informative event streams. Objects of a small size or with a limited texture or a color that blends with the background may fail to generate sufficient number of events. Events should be captured at sufficiently high quality and at high temporal resolution in order to convert them to event images with sharp object edges.
+The primary limitation of this approach is the dependence on informative event streams. Small objects, objects with limited texture, or objects whose color blends with the background may fail to generate a sufficient number of events. Events should be captured at sufficiently high quality and at high temporal resolution in order to convert them to event images with sharp object edges.
 
-To train a generalizable event encoder, one needs to generate a large synthetic dataset with highly varied events. The number and quality of events, alongside their spatial positioning should be subject to strong randomization.
+To train a generalizable event encoder, one needs to generate a large synthetic dataset with highly varied events. The number and quality of events, alongside their spatial positioning, should be subject to strong randomization.
 
 ## Rendering Pipeline
 
