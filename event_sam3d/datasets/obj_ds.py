@@ -198,10 +198,11 @@ class ObjDataset:
                 else:
                     use_orig_mask = True
             if use_orig_mask:
+                # set the background to zero such that it doesn't contribute to values in the net's forward()
                 rgb[np.all(rgb == (26, 26, 26), axis=-1)] = 0
                 mask = np.any(rgb > 0, axis=-1)
                 mask = cv2.morphologyEx(
-                    mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)
+                    mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((5, 5), np.uint8)
                 )
             sample["mask"] = mask.astype(np.uint8)
         if self.use_sam3d:
@@ -218,6 +219,7 @@ class ObjDataset:
                 t=cast_to_torch(events[:, 2]),
                 p=cast_to_torch(events[:, 3]),
             )
+            event_repr = self.vg.to_rgb_mono(event_repr)
             event_repr = adjust_img_for_plt(event_repr)
             sample["events"] = event_repr
         if self.transform is not None:
